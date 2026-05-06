@@ -1,0 +1,50 @@
+name: CI
+
+on:
+  push:
+    branches:
+      - main
+  pull_request:
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+      - name: Setup Node.js
+        uses: actions/setup-node@v6
+        with:
+          node-version: "24"
+          cache: "npm"
+      - name: Install dependencies
+        run: npm ci
+      - name: Run unit tests
+        run: npm test
+      - name: Build
+        run: npm run build
+
+  e2e:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+      - name: Setup Node.js
+        uses: actions/setup-node@v6
+        with:
+          node-version: "24"
+          cache: "npm"
+      - name: Install dependencies
+        run: npm ci
+      - name: Start Paperless test stack
+        run: npm run test:e2e:up
+      - name: Run E2E tests
+        run: npm run test:e2e
+        env:
+          PAPERLESS_E2E_URL: http://localhost:8001
+          PAPERLESS_ADMIN_USER: admin
+          PAPERLESS_ADMIN_PASSWORD: admin
+      - name: Show Paperless logs on failure
+        if: failure()
+        run: docker compose -f docker-compose.e2e.yml logs --tail=200 paperless
+      - name: Stop Paperless test stack
+        if: always()
+        run: npm run test:e2e:down

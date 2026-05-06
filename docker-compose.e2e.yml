@@ -1,0 +1,30 @@
+services:
+  redis:
+    image: redis:7-alpine
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+  paperless:
+    image: ghcr.io/paperless-ngx/paperless-ngx:2.13
+    depends_on:
+      redis:
+        condition: service_healthy
+    ports:
+      - "8001:8000"
+    environment:
+      PAPERLESS_REDIS: redis://redis:6379
+      PAPERLESS_SECRET_KEY: e2e-test-secret-not-for-production
+      PAPERLESS_ADMIN_USER: admin
+      PAPERLESS_ADMIN_PASSWORD: admin
+      PAPERLESS_TIME_ZONE: UTC
+      PAPERLESS_OCR_LANGUAGES: eng
+      PAPERLESS_DBENGINE: sqlite
+    healthcheck:
+      test: ["CMD", "curl", "-fsSL", "-H", "Accept: application/json", "http://localhost:8000/api/"]
+      interval: 5s
+      timeout: 5s
+      retries: 60
+      start_period: 60s

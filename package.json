@@ -1,0 +1,59 @@
+{
+  "name": "paperless-ngx-mcp",
+  "version": "0.1.0",
+  "description": "Model Context Protocol (MCP) server for Paperless-NGX. Lets AI assistants manage documents, tags, correspondents, document types, custom fields, saved views, storage paths, workflows, share links, notes, trash, and tasks via the Paperless-NGX REST API.",
+  "main": "build/index.js",
+  "bin": {
+    "paperless-ngx-mcp": "build/index.js"
+  },
+  "scripts": {
+    "test": "node --import tsx --test 'src/**/*.test.ts'",
+    "test:e2e": "node --import tsx --test --test-concurrency=1 'tests/e2e/**/*.e2e.test.ts'",
+    "test:e2e:up": "docker compose -f docker-compose.e2e.yml up -d --wait",
+    "test:e2e:down": "docker compose -f docker-compose.e2e.yml down -v",
+    "start": "tsx src/index.ts",
+    "build": "tsc",
+    "inspect": "npm run build && npx -y @modelcontextprotocol/inspector node build/index.js",
+    "prepack": "npm run build"
+  },
+  "keywords": [
+    "mcp",
+    "paperless-ngx",
+    "document-management",
+    "ai",
+    "claude",
+    "model-context-protocol",
+    "paperless"
+  ],
+  "author": "Oliver Fueckert <oliver@cubinet.de>",
+  "license": "ISC",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/cubinet-code/paperless-ngx-mcp.git"
+  },
+  "bugs": {
+    "url": "https://github.com/cubinet-code/paperless-ngx-mcp/issues"
+  },
+  "homepage": "https://github.com/cubinet-code/paperless-ngx-mcp#readme",
+  "engines": {
+    "node": ">=24.0.0"
+  },
+  "files": [
+    "build",
+    "README.md",
+    "LICENSE"
+  ],
+  "dependencies": {
+    "@modelcontextprotocol/sdk": "~1.22.0",
+    "axios": "^1.15.2",
+    "express": "^5.2.1",
+    "form-data": "^4.0.5",
+    "zod": "^3.25.76"
+  },
+  "devDependencies": {
+    "@types/express": "^5.0.6",
+    "@types/node": "^24.12.2",
+    "tsx": "^4.21.0",
+    "typescript": "^5.9.3"
+  }
+}
