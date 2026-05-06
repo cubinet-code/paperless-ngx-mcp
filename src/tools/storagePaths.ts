@@ -27,7 +27,7 @@ export function registerStoragePathTools(
       ordering: z.string().optional(),
     },
     Annotations.READ,
-    withErrorHandling(async (args = {}) => {
+    withErrorHandling(async (args) => {
       if (!api) throw new Error("Please configure API connection first");
       const queryString = buildQueryString(args);
       const response = await api.getStoragePaths(queryString || undefined);

@@ -4,6 +4,7 @@ import { McpServer } from "@modelcontextprotocol/sdk/server/mcp";
 import { z } from "zod";
 import { convertDocsWithNames } from "../api/documentEnhancer";
 import { PaperlessAPI } from "../api/PaperlessAPI";
+import { BulkEditParameters, Document } from "../api/types";
 import { arrayNotEmpty, objectNotEmpty } from "./utils/empty";
 import { withErrorHandling } from "./utils/middlewares";
 import { validateCustomFields } from "./utils/monetary";
@@ -101,7 +102,7 @@ export function registerDocumentTools(server: McpServer, api: PaperlessAPI) {
       validateCustomFields(add_custom_fields);
 
       // Transform add_custom_fields into the two separate API parameters
-      const apiParameters = { ...parameters };
+      const apiParameters: BulkEditParameters = { ...parameters };
       if (add_custom_fields && add_custom_fields.length > 0) {
         apiParameters.assign_custom_fields = add_custom_fields.map(
           (cf) => cf.field
@@ -163,7 +164,10 @@ export function registerDocumentTools(server: McpServer, api: PaperlessAPI) {
         document = Buffer.from(file, "base64");
       }
 
-      const response = await api.postDocument(document, filename, metadata);
+      const cleanedMetadata = Object.fromEntries(
+        Object.entries(metadata).filter(([, v]) => v !== undefined)
+      ) as Record<string, string | number | string[] | number[]>;
+      const response = await api.postDocument(document, filename, cleanedMetadata);
       let result;
       if (typeof response === "string" && /^\d+$/.test(response)) {
         result = { id: Number(response) };
@@ -407,7 +411,7 @@ export function registerDocumentTools(server: McpServer, api: PaperlessAPI) {
 
       validateCustomFields(updateData.custom_fields);
 
-      const response = await api.updateDocument(id, updateData);
+      const response = await api.updateDocument(id, updateData as Partial<Document>);
 
       return convertDocsWithNames(response, api);
     })

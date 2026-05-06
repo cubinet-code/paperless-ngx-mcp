@@ -41,8 +41,8 @@ const workflowActionFields = {
     .object({
       url: z.string(),
       use_params: z.boolean().optional(),
-      params: z.record(z.string()).optional(),
-      headers: z.record(z.string()).optional(),
+      params: z.record(z.string(), z.string()).optional(),
+      headers: z.record(z.string(), z.string()).optional(),
       body: z.string().optional(),
     })
     .nullable()
@@ -93,7 +93,7 @@ export function registerWorkflowTools(server: McpServer, api: PaperlessAPI) {
       page_size: z.number().int().min(1).optional().describe("Number of items per page"),
     },
     Annotations.READ,
-    withErrorHandling(async (args = {}) => {
+    withErrorHandling(async (args) => {
       if (!api) throw new Error("Please configure API connection first");
       const queryString = buildQueryString(args);
       const response = await api.request(
@@ -199,7 +199,7 @@ export function registerWorkflowTools(server: McpServer, api: PaperlessAPI) {
       page_size: z.number().int().min(1).optional().describe("Number of items per page"),
     },
     Annotations.READ,
-    withErrorHandling(async (args = {}) => {
+    withErrorHandling(async (args) => {
       if (!api) throw new Error("Please configure API connection first");
       const queryString = buildQueryString(args);
       const response = await api.request(

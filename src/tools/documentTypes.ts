@@ -29,7 +29,7 @@ export function registerDocumentTypeTools(
       is_empty: z.boolean().optional().describe("Filter to only document types with 0 documents (true) or only those with >=1 document (false). Paginates through all results so the filter is global, not page-scoped."),
     },
     Annotations.READ,
-    withErrorHandling(async (args = {}, extra) => {
+    withErrorHandling(async (args, extra) => {
       if (!api) throw new Error("Please configure API connection first");
       const { is_empty, ...apiArgs } = args;
 

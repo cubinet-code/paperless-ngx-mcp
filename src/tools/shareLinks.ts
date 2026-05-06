@@ -15,7 +15,7 @@ export function registerShareLinkTools(server: McpServer, api: PaperlessAPI) {
       ordering: z.string().optional(),
     },
     Annotations.READ,
-    withErrorHandling(async (args = {}) => {
+    withErrorHandling(async (args) => {
       if (!api) throw new Error("Please configure API connection first");
       const queryString = buildQueryString(args);
       const response = await api.request(

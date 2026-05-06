@@ -23,7 +23,7 @@ export interface Tag {
   color: string;
   text_color: string;
   match: string;
-  matching_algorithm: MatchingAlgorithm;
+  matching_algorithm: number;
   is_insensitive: boolean;
   is_inbox_tag: boolean;
   document_count: number;
@@ -116,7 +116,7 @@ export interface Correspondent {
   slug: string;
   name: string;
   match: string;
-  matching_algorithm: MatchingAlgorithm;
+  matching_algorithm: number;
   is_insensitive: boolean;
   document_count: number;
   last_correspondence: string;
@@ -133,7 +133,7 @@ export interface DocumentType {
   slug: string;
   name: string;
   match: string;
-  matching_algorithm: MatchingAlgorithm;
+  matching_algorithm: number;
   is_insensitive: boolean;
   document_count: number;
   last_correspondence: string;
@@ -151,7 +151,7 @@ export interface StoragePath {
   name: string;
   path: string;
   match: string;
-  matching_algorithm: MatchingAlgorithm;
+  matching_algorithm: number;
   is_insensitive: boolean;
   document_count: number;
   owner: number | null;

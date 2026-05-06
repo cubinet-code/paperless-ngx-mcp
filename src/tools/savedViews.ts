@@ -15,7 +15,7 @@ export function registerSavedViewTools(server: McpServer, api: PaperlessAPI) {
       page_size: z.number().int().min(1).optional().describe("Number of items per page"),
     },
     Annotations.READ,
-    withErrorHandling(async (args = {}) => {
+    withErrorHandling(async (args) => {
       if (!api) throw new Error("Please configure API connection first");
       const queryString = buildQueryString(args);
       const response = await api.getSavedViews(queryString || undefined);

@@ -161,7 +161,7 @@ export function registerSystemTools(server: McpServer, api: PaperlessAPI) {
       page_size: z.number().int().min(1).optional().describe("Number of items per page"),
     },
     Annotations.READ,
-    withErrorHandling(async (args = {}) => {
+    withErrorHandling(async (args) => {
       if (!api) throw new Error("Please configure API connection first");
       const queryString = buildQueryString(args);
       const response = await api.request(
@@ -274,7 +274,7 @@ export function registerSystemTools(server: McpServer, api: PaperlessAPI) {
       limit: z.number().int().min(1).optional().describe("Max number of tasks to return (default 25). The API returns all tasks at once, so this truncates client-side."),
     },
     Annotations.READ,
-    withErrorHandling(async (args = {}) => {
+    withErrorHandling(async (args) => {
       if (!api) throw new Error("Please configure API connection first");
       const { limit, ...filterArgs } = args;
       const params = new URLSearchParams();
