@@ -70,25 +70,34 @@ async function enhanceDocumentsArray(
     return [];
   }
 
-  const [correspondents, documentTypes, tags, customFields] = await Promise.all(
-    [
-      api.getCorrespondents("page_size=10000"),
-      api.getDocumentTypes("page_size=10000"),
-      api.getTags("page_size=10000"),
-      api.getCustomFields("page_size=10000"),
-    ]
-  );
+  const needsCorrespondents = documents.some((d) => d.correspondent !== null);
+  const needsDocumentTypes = documents.some((d) => d.document_type !== null);
+  const needsTags = documents.some((d) => d.tags.length > 0);
+  const needsCustomFields = documents.some((d) => d.custom_fields.length > 0);
 
-  const correspondentMap = new Map(
-    (correspondents.results || []).map((c) => [c.id, c.name])
-  );
-  const documentTypeMap = new Map(
-    (documentTypes.results || []).map((dt) => [dt.id, dt.name])
-  );
-  const tagMap = new Map((tags.results || []).map((tag) => [tag.id, tag.name]));
-  const customFieldMap = new Map(
-    (customFields.results || []).map((cf) => [cf.id, cf.name])
-  );
+  const emptyMap = <K, V>() => new Map<K, V>();
+  const buildMap = <T extends { id: number; name: string }>(
+    response: { results: T[] } | { results?: T[] }
+  ) =>
+    new Map<number, string>(
+      (response.results ?? []).map((item) => [item.id, item.name])
+    );
+
+  const [correspondentMap, documentTypeMap, tagMap, customFieldMap] =
+    await Promise.all([
+      needsCorrespondents
+        ? api.getCorrespondents("page_size=10000").then(buildMap)
+        : emptyMap<number, string>(),
+      needsDocumentTypes
+        ? api.getDocumentTypes("page_size=10000").then(buildMap)
+        : emptyMap<number, string>(),
+      needsTags
+        ? api.getTags("page_size=10000").then(buildMap)
+        : emptyMap<number, string>(),
+      needsCustomFields
+        ? api.getCustomFields("page_size=10000").then(buildMap)
+        : emptyMap<number, string>(),
+    ]);
 
   return documents.map((doc) => {
     const { content, notes, ...slim } = doc;
