@@ -5,16 +5,25 @@ import { Annotations } from "./utils/annotations";
 import { arrayNotEmpty } from "./utils/empty";
 import { withErrorHandling } from "./utils/middlewares";
 import { buildQueryString } from "./utils/queryString";
+import { deletedResponse, requireConfirm } from "./utils/responses";
+import { paginationFields } from "./utils/schemas";
+
+interface Task {
+  id: number;
+  task_id: string;
+  task_name: string;
+  status: string;
+  date_created?: string;
+  [key: string]: unknown;
+}
 
 export function registerSystemTools(server: McpServer, api: PaperlessAPI) {
-  // Statistics
   server.tool(
     "get_statistics",
     "Get system statistics including document counts, inbox status, file type breakdown, and storage information.",
     {},
     Annotations.READ,
     withErrorHandling(async () => {
-      if (!api) throw new Error("Please configure API connection first");
       const response = await api.request("/statistics/");
       return {
         content: [{ type: "text", text: JSON.stringify(response) }],
@@ -22,14 +31,12 @@ export function registerSystemTools(server: McpServer, api: PaperlessAPI) {
     })
   );
 
-  // Document Suggestions
   server.tool(
     "get_document_suggestions",
     "Get AI-powered suggestions for a document's correspondent, tags, and document type based on its content.",
     { id: z.number().describe("The document ID to get suggestions for") },
     Annotations.READ,
     withErrorHandling(async (args) => {
-      if (!api) throw new Error("Please configure API connection first");
       const response = await api.request(`/documents/${args.id}/suggestions/`);
       return {
         content: [{ type: "text", text: JSON.stringify(response) }],
@@ -37,14 +44,12 @@ export function registerSystemTools(server: McpServer, api: PaperlessAPI) {
     })
   );
 
-  // Document Metadata
   server.tool(
     "get_document_metadata",
     "Get file metadata for a document including checksums, file sizes, and archival information.",
     { id: z.number().describe("The document ID") },
     Annotations.READ,
     withErrorHandling(async (args) => {
-      if (!api) throw new Error("Please configure API connection first");
       const response = await api.request(`/documents/${args.id}/metadata/`);
       return {
         content: [{ type: "text", text: JSON.stringify(response) }],
@@ -52,18 +57,15 @@ export function registerSystemTools(server: McpServer, api: PaperlessAPI) {
     })
   );
 
-  // Document Notes
   server.tool(
     "list_document_notes",
     "List all notes for a specific document.",
     {
       id: z.number().describe("The document ID"),
-      page: z.number().int().min(1).optional().describe("Page number (1-based)"),
-      page_size: z.number().int().min(1).optional().describe("Number of items per page"),
+      ...paginationFields,
     },
     Annotations.READ,
     withErrorHandling(async (args) => {
-      if (!api) throw new Error("Please configure API connection first");
       const { id, ...pagination } = args;
       const queryString = buildQueryString(pagination);
       const response = await api.request(`/documents/${id}/notes/${queryString ? `?${queryString}` : ""}`);
@@ -82,7 +84,6 @@ export function registerSystemTools(server: McpServer, api: PaperlessAPI) {
     },
     Annotations.CREATE,
     withErrorHandling(async (args) => {
-      if (!api) throw new Error("Please configure API connection first");
       const response = await api.request(`/documents/${args.id}/notes/`, {
         method: "POST",
         body: JSON.stringify({ note: args.note }),
@@ -103,24 +104,14 @@ export function registerSystemTools(server: McpServer, api: PaperlessAPI) {
     },
     Annotations.DELETE,
     withErrorHandling(async (args) => {
-      if (!api) throw new Error("Please configure API connection first");
-      if (!args.confirm) {
-        throw new Error(
-          "Confirmation required for destructive operation. Set confirm: true to proceed."
-        );
-      }
+      requireConfirm(args.confirm);
       await api.request(`/documents/${args.id}/notes/${args.note_id}/`, {
         method: "DELETE",
       });
-      return {
-        content: [
-          { type: "text", text: JSON.stringify({ status: "deleted" }) },
-        ],
-      };
+      return deletedResponse();
     })
   );
 
-  // Delete document
   server.tool(
     "delete_document",
     "Move a document to trash (soft-delete). The document remains recoverable until the trash is emptied or the retention window expires (~30 days). Use empty_trash for permanent deletion.",
@@ -134,35 +125,18 @@ export function registerSystemTools(server: McpServer, api: PaperlessAPI) {
     },
     Annotations.DELETE,
     withErrorHandling(async (args) => {
-      if (!api) throw new Error("Please configure API connection first");
-      if (!args.confirm) {
-        throw new Error(
-          "Confirmation required for destructive operation. Set confirm: true to proceed."
-        );
-      }
+      requireConfirm(args.confirm);
       await api.deleteDocument(args.id);
-      return {
-        content: [
-          {
-            type: "text",
-            text: JSON.stringify({ status: "deleted" }),
-          },
-        ],
-      };
+      return deletedResponse();
     })
   );
 
-  // Trash management
   server.tool(
     "list_trash",
     "List documents in the trash (soft-deleted documents).",
-    {
-      page: z.number().int().min(1).optional().describe("Page number (1-based)"),
-      page_size: z.number().int().min(1).optional().describe("Number of items per page"),
-    },
+    paginationFields,
     Annotations.READ,
     withErrorHandling(async (args) => {
-      if (!api) throw new Error("Please configure API connection first");
       const queryString = buildQueryString(args);
       const response = await api.request(
         `/trash/${queryString ? `?${queryString}` : ""}`
@@ -181,7 +155,6 @@ export function registerSystemTools(server: McpServer, api: PaperlessAPI) {
     },
     Annotations.UPDATE,
     withErrorHandling(async (args) => {
-      if (!api) throw new Error("Please configure API connection first");
       const response = await api.request("/trash/", {
         method: "POST",
         body: JSON.stringify({
@@ -204,19 +177,13 @@ export function registerSystemTools(server: McpServer, api: PaperlessAPI) {
     },
     Annotations.DELETE,
     withErrorHandling(async (args) => {
-      if (!api) throw new Error("Please configure API connection first");
-      if (!args.confirm) {
-        throw new Error(
-          "Confirmation required for destructive operation. Set confirm: true to proceed."
-        );
-      }
-      const body: Record<string, unknown> = { action: "empty" };
-      if (args.documents) {
-        body.documents = args.documents;
-      }
+      requireConfirm(args.confirm);
       const response = await api.request("/trash/", {
         method: "POST",
-        body: JSON.stringify(body),
+        body: JSON.stringify({
+          action: "empty",
+          ...(args.documents && { documents: args.documents }),
+        }),
       });
       return {
         content: [{ type: "text", text: JSON.stringify(response) }],
@@ -224,7 +191,6 @@ export function registerSystemTools(server: McpServer, api: PaperlessAPI) {
     })
   );
 
-  // Search Autocomplete
   server.tool(
     "search_autocomplete",
     "Get search term autocomplete suggestions based on the document index.",
@@ -234,11 +200,9 @@ export function registerSystemTools(server: McpServer, api: PaperlessAPI) {
     },
     Annotations.READ,
     withErrorHandling(async (args) => {
-      if (!api) throw new Error("Please configure API connection first");
-      const params = new URLSearchParams({ term: args.term });
-      if (args.limit !== undefined) params.set("limit", args.limit.toString());
+      const queryString = buildQueryString(args);
       const response = await api.request(
-        `/search/autocomplete/?${params.toString()}`
+        `/search/autocomplete/${queryString ? `?${queryString}` : ""}`
       );
       return {
         content: [{ type: "text", text: JSON.stringify(response) }],
@@ -246,14 +210,12 @@ export function registerSystemTools(server: McpServer, api: PaperlessAPI) {
     })
   );
 
-  // Next ASN
   server.tool(
     "get_next_asn",
     "Get the next available Archive Serial Number (ASN) for document filing.",
     {},
     Annotations.READ,
     withErrorHandling(async () => {
-      if (!api) throw new Error("Please configure API connection first");
       const response = await api.request("/documents/next_asn/");
       return {
         content: [{ type: "text", text: JSON.stringify(response) }],
@@ -261,7 +223,6 @@ export function registerSystemTools(server: McpServer, api: PaperlessAPI) {
     })
   );
 
-  // Tasks
   server.tool(
     "list_tasks",
     "List background tasks with their status, progress, and results. Useful for monitoring document consumption and other async operations. Note: the API returns a flat array (no pagination), so use filters to limit results.",
@@ -275,19 +236,12 @@ export function registerSystemTools(server: McpServer, api: PaperlessAPI) {
     },
     Annotations.READ,
     withErrorHandling(async (args) => {
-      if (!api) throw new Error("Please configure API connection first");
       const { limit, ...filterArgs } = args;
-      const params = new URLSearchParams();
-      if (filterArgs.status) params.set("status", filterArgs.status);
-      if (filterArgs.task_name) params.set("task_name", filterArgs.task_name);
-      if (filterArgs.type) params.set("type", filterArgs.type);
-      if (filterArgs.acknowledged !== undefined) params.set("acknowledged", String(filterArgs.acknowledged));
-      if (filterArgs.ordering) params.set("ordering", filterArgs.ordering);
-      const query = params.toString();
-      const response = await api.request(
-        `/tasks/${query ? `?${query}` : ""}`
+      const queryString = buildQueryString(filterArgs);
+      const response = await api.request<Task[]>(
+        `/tasks/${queryString ? `?${queryString}` : ""}`
       );
-      const tasks = Array.isArray(response) ? response.slice(0, limit ?? 25) : response;
+      const tasks = response.slice(0, limit ?? 25);
       return {
         content: [{ type: "text", text: JSON.stringify(tasks) }],
       };
@@ -302,7 +256,6 @@ export function registerSystemTools(server: McpServer, api: PaperlessAPI) {
     },
     Annotations.UPDATE,
     withErrorHandling(async (args) => {
-      if (!api) throw new Error("Please configure API connection first");
       const response = await api.request("/tasks/acknowledge/", {
         method: "POST",
         body: JSON.stringify({ tasks: args.tasks }),
@@ -313,7 +266,6 @@ export function registerSystemTools(server: McpServer, api: PaperlessAPI) {
     })
   );
 
-  // Bulk Download
   server.tool(
     "bulk_download",
     "Download multiple documents as a ZIP archive. Returns base64-encoded ZIP file.",
@@ -334,7 +286,6 @@ export function registerSystemTools(server: McpServer, api: PaperlessAPI) {
     },
     Annotations.READ,
     withErrorHandling(async (args) => {
-      if (!api) throw new Error("Please configure API connection first");
       const { documents, ...options } = args;
       const response = await api.requestRaw("/documents/bulk_download/", {
         method: "POST",

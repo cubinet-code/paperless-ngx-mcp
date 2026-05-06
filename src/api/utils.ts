@@ -3,16 +3,25 @@ import { MATCHING_ALGORITHM_OPTIONS, MatchingAlgorithm } from "./types";
 const isKnownMatchingAlgorithm = (n: number): n is MatchingAlgorithm =>
   n in MATCHING_ALGORITHM_OPTIONS;
 
-export const headersToObject = (headers: any): Record<string, string> => {
+type IterableHeaders = {
+  forEach: (cb: (value: string, key: string) => void) => void;
+};
+
+export const headersToObject = (
+  headers: unknown
+): Record<string, string> => {
   if (!headers) return {};
-  if (typeof headers.forEach === "function") {
+  if (
+    typeof headers === "object" &&
+    typeof (headers as IterableHeaders).forEach === "function"
+  ) {
     const obj: Record<string, string> = {};
-    headers.forEach((value: string, key: string) => {
+    (headers as IterableHeaders).forEach((value, key) => {
       obj[key] = value;
     });
     return obj;
   }
-  return headers;
+  return headers as Record<string, string>;
 };
 
 export interface NamedItem {

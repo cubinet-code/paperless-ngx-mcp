@@ -1,9 +1,10 @@
-export function buildQueryString(args: Record<string, any>): string {
+type QueryValue = string | number | boolean | null | undefined;
+
+export function buildQueryString(args: Record<string, QueryValue>): string {
   const query = new URLSearchParams();
-  for (const key in args) {
-    if (args[key] !== undefined && args[key] !== null) {
-      query.set(key, args[key].toString());
-    }
+  for (const [key, value] of Object.entries(args)) {
+    if (value === undefined || value === null) continue;
+    query.set(key, String(value));
   }
   return query.toString();
 }

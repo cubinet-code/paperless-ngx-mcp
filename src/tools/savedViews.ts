@@ -5,18 +5,16 @@ import { Annotations } from "./utils/annotations";
 import { arrayNotEmpty } from "./utils/empty";
 import { withErrorHandling } from "./utils/middlewares";
 import { buildQueryString } from "./utils/queryString";
+import { deletedResponse, requireConfirm } from "./utils/responses";
+import { paginationFields } from "./utils/schemas";
 
 export function registerSavedViewTools(server: McpServer, api: PaperlessAPI) {
   server.tool(
     "list_saved_views",
     "List all saved views with optional pagination. Saved views store filter/sort configurations for quick access.",
-    {
-      page: z.number().int().min(1).optional().describe("Page number (1-based)"),
-      page_size: z.number().int().min(1).optional().describe("Number of items per page"),
-    },
+    paginationFields,
     Annotations.READ,
     withErrorHandling(async (args) => {
-      if (!api) throw new Error("Please configure API connection first");
       const queryString = buildQueryString(args);
       const response = await api.getSavedViews(queryString || undefined);
       return {
@@ -31,7 +29,6 @@ export function registerSavedViewTools(server: McpServer, api: PaperlessAPI) {
     { id: z.number() },
     Annotations.READ,
     withErrorHandling(async (args) => {
-      if (!api) throw new Error("Please configure API connection first");
       const response = await api.getSavedView(args.id);
       return {
         content: [{ type: "text", text: JSON.stringify(response) }],
@@ -60,7 +57,6 @@ export function registerSavedViewTools(server: McpServer, api: PaperlessAPI) {
     },
     Annotations.CREATE,
     withErrorHandling(async (args) => {
-      if (!api) throw new Error("Please configure API connection first");
       const response = await api.createSavedView(args);
       return {
         content: [{ type: "text", text: JSON.stringify(response) }],
@@ -90,7 +86,6 @@ export function registerSavedViewTools(server: McpServer, api: PaperlessAPI) {
     },
     Annotations.UPDATE,
     withErrorHandling(async (args) => {
-      if (!api) throw new Error("Please configure API connection first");
       const { id, ...data } = args;
       const response = await api.updateSavedView(id, data);
       return {
@@ -108,18 +103,9 @@ export function registerSavedViewTools(server: McpServer, api: PaperlessAPI) {
     },
     Annotations.DELETE,
     withErrorHandling(async (args) => {
-      if (!api) throw new Error("Please configure API connection first");
-      if (!args.confirm) {
-        throw new Error(
-          "Confirmation required for destructive operation. Set confirm: true to proceed."
-        );
-      }
+      requireConfirm(args.confirm);
       await api.deleteSavedView(args.id);
-      return {
-        content: [
-          { type: "text", text: JSON.stringify({ status: "deleted" }) },
-        ],
-      };
+      return deletedResponse();
     })
   );
 }

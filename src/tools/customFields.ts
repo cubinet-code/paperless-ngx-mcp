@@ -4,27 +4,22 @@ import { PaperlessAPI } from "../api/PaperlessAPI";
 import { Annotations } from "./utils/annotations";
 import { withErrorHandling } from "./utils/middlewares";
 import { buildQueryString } from "./utils/queryString";
+import { deletedResponse, requireConfirm } from "./utils/responses";
+import { nameFilterFields, paginationFields } from "./utils/schemas";
 
 export function registerCustomFieldTools(server: McpServer, api: PaperlessAPI) {
   server.tool(
     "list_custom_fields",
     "List all custom fields. IMPORTANT: When a user query may refer to a custom field, you should fetch all custom fields up front (with a large enough page_size), cache them for the session, and search locally for matches by name before making further API calls. This reduces redundant requests and handles ambiguity efficiently.",
     {
-      page: z.number().int().min(1).optional().describe("Page number (1-based)"),
-      page_size: z.number().int().min(1).optional().describe("Number of items per page"),
-      name__icontains: z.string().optional(),
-      name__iendswith: z.string().optional(),
-      name__iexact: z.string().optional(),
-      name__istartswith: z.string().optional(),
+      ...paginationFields,
+      ...nameFilterFields,
       ordering: z.string().optional(),
     },
     Annotations.READ,
     withErrorHandling(async (args) => {
-      if (!api) throw new Error("Please configure API connection first");
       const queryString = buildQueryString(args);
-      const response = await api.request(
-        `/custom_fields/${queryString ? `?${queryString}` : ""}`
-      );
+      const response = await api.getCustomFields(queryString);
       return {
         content: [
           {
@@ -41,8 +36,7 @@ export function registerCustomFieldTools(server: McpServer, api: PaperlessAPI) {
     "Get a specific custom field by ID with full details including data type and extra configuration.",
     { id: z.number() },
     Annotations.READ,
-    withErrorHandling(async (args, extra) => {
-      if (!api) throw new Error("Please configure API connection first");
+    withErrorHandling(async (args) => {
       const response = await api.getCustomField(args.id);
       return {
         content: [{ type: "text", text: JSON.stringify(response) }],
@@ -69,8 +63,7 @@ export function registerCustomFieldTools(server: McpServer, api: PaperlessAPI) {
       extra_data: z.record(z.string(), z.unknown()).nullable().optional(),
     },
     Annotations.CREATE,
-    withErrorHandling(async (args, extra) => {
-      if (!api) throw new Error("Please configure API connection first");
+    withErrorHandling(async (args) => {
       const response = await api.createCustomField(args);
       return {
         content: [{ type: "text", text: JSON.stringify(response) }],
@@ -100,8 +93,7 @@ export function registerCustomFieldTools(server: McpServer, api: PaperlessAPI) {
       extra_data: z.record(z.string(), z.unknown()).nullable().optional(),
     },
     Annotations.UPDATE,
-    withErrorHandling(async (args, extra) => {
-      if (!api) throw new Error("Please configure API connection first");
+    withErrorHandling(async (args) => {
       const { id, ...data } = args;
       const response = await api.updateCustomField(id, data);
       return {
@@ -113,22 +105,15 @@ export function registerCustomFieldTools(server: McpServer, api: PaperlessAPI) {
   server.tool(
     "delete_custom_field",
     "⚠️ DESTRUCTIVE: Permanently delete a custom field from the entire system. This will remove the field from ALL documents that use it.",
-    { 
+    {
       id: z.number(),
       confirm: z.boolean().describe("Must be true to confirm this destructive operation"),
     },
     Annotations.DELETE,
-    withErrorHandling(async (args, extra) => {
-      if (!api) throw new Error("Please configure API connection first");
-      if (!args.confirm) {
-        throw new Error("Confirmation required for destructive operation. Set confirm: true to proceed.");
-      }
+    withErrorHandling(async (args) => {
+      requireConfirm(args.confirm);
       await api.deleteCustomField(args.id);
-      return {
-        content: [
-          { type: "text", text: JSON.stringify({ status: "deleted" }) },
-        ],
-      };
+      return deletedResponse();
     })
   );
 
@@ -141,11 +126,8 @@ export function registerCustomFieldTools(server: McpServer, api: PaperlessAPI) {
       confirm: z.boolean().optional().describe("Must be true when operation is 'delete' to confirm destructive operation"),
     },
     Annotations.BULK_EDIT,
-    withErrorHandling(async (args, extra) => {
-      if (!api) throw new Error("Please configure API connection first");
-      if (args.operation === "delete" && !args.confirm) {
-        throw new Error("Confirmation required for destructive operation. Set confirm: true to proceed.");
-      }
+    withErrorHandling(async (args) => {
+      if (args.operation === "delete") requireConfirm(args.confirm);
       const response = await api.bulkEditObjects(
         args.custom_fields,
         "custom_field",
@@ -161,4 +143,4 @@ export function registerCustomFieldTools(server: McpServer, api: PaperlessAPI) {
       };
     })
   );
-} 
+}

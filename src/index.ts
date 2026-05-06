@@ -10,6 +10,7 @@ import { registerCorrespondentTools } from "./tools/correspondents";
 import { registerCustomFieldTools } from "./tools/customFields";
 import { registerDocumentTools } from "./tools/documents";
 import { registerDocumentTypeTools } from "./tools/documentTypes";
+import { registerPrompts } from "./tools/prompts";
 import { registerSavedViewTools } from "./tools/savedViews";
 import { registerShareLinkTools } from "./tools/shareLinks";
 import { registerStoragePathTools } from "./tools/storagePaths";
@@ -94,6 +95,7 @@ Quick tool-selection guide:
   registerShareLinkTools(server, api);
   registerWorkflowTools(server, api);
   registerSystemTools(server, api);
+  registerPrompts(server);
 
   if (useHttp) {
     const app = express();
@@ -127,7 +129,7 @@ Quick tool-selection guide:
       }
     });
 
-    app.get("/mcp", async (req, res) => {
+    const methodNotAllowed = (_req: express.Request, res: express.Response) => {
       res.writeHead(405).end(
         JSON.stringify({
           jsonrpc: "2.0",
@@ -138,20 +140,8 @@ Quick tool-selection guide:
           id: null,
         })
       );
-    });
-
-    app.delete("/mcp", async (req, res) => {
-      res.writeHead(405).end(
-        JSON.stringify({
-          jsonrpc: "2.0",
-          error: {
-            code: -32000,
-            message: "Method not allowed.",
-          },
-          id: null,
-        })
-      );
-    });
+    };
+    app.route("/mcp").get(methodNotAllowed).delete(methodNotAllowed);
 
     app.get("/sse", async (req, res) => {
       // SSE connection established
@@ -193,7 +183,6 @@ Quick tool-selection guide:
         `MCP Stateless Streamable HTTP Server listening on port ${resolvedPort}`
       );
     });
-    // await new Promise((resolve) => setTimeout(resolve, 1000000));
   } else {
     const transport = new StdioServerTransport();
     await server.connect(transport);

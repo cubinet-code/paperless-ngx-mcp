@@ -39,13 +39,24 @@ export const client = axios.create({
   httpsAgent,
 });
 
+export interface PostDocumentMetadata {
+  title?: string;
+  created?: string;
+  correspondent?: number;
+  document_type?: number;
+  storage_path?: number;
+  tags?: number[];
+  archive_serial_number?: number;
+  custom_fields?: number[];
+}
+
 export class PaperlessAPI {
   constructor(
     private readonly baseUrl: string,
     private readonly token: string
   ) {}
 
-  async request<T = any>(path: string, options: RequestInit = {}) {
+  async request<T = unknown>(path: string, options: RequestInit = {}): Promise<T> {
     const url = `${this.baseUrl}/api${path}`;
     const isJson = !options.body || typeof options.body === "string";
 
@@ -64,18 +75,7 @@ export class PaperlessAPI {
         headers: mergedHeaders,
         data: options.body,
       });
-
-      const body = response.data;
-      if (response.status < 200 || response.status >= 300) {
-        const errorMessage =
-          (body as Record<string, unknown>)?.detail ||
-          (body as Record<string, unknown>)?.error ||
-          (body as Record<string, unknown>)?.message ||
-          `HTTP error! status: ${response.status}`;
-        throw new Error(String(errorMessage));
-      }
-
-      return body;
+      return response.data;
     } catch (error: unknown) {
       if (axios.isAxiosError(error)) {
         const status = error.response?.status;
@@ -84,20 +84,14 @@ export class PaperlessAPI {
           | undefined;
         const detail =
           responseData?.detail || responseData?.error || responseData?.message;
-        const message = error.message;
-        throw new Error(
-          detail
-            ? `${detail}${status ? ` (HTTP ${status})` : ""}`
-            : status
-              ? `${message} (HTTP ${status})`
-              : message
-        );
+        const parts = [detail || error.message];
+        if (status) parts.push(`(HTTP ${status})`);
+        throw new Error(parts.join(" "));
       }
       throw error;
     }
   }
 
-  // Document operations
   async bulkEditDocuments(
     documents: number[],
     method: string,
@@ -116,33 +110,30 @@ export class PaperlessAPI {
   async postDocument(
     document: Buffer,
     filename: string,
-    metadata: Record<string, string | string[] | number | number[]> = {}
+    metadata: PostDocumentMetadata = {}
   ): Promise<string> {
     const formData = new FormData();
     formData.append("document", document, { filename });
 
-    // Add optional metadata fields
     if (metadata.title) formData.append("title", metadata.title);
     if (metadata.created) formData.append("created", metadata.created);
-    if (metadata.correspondent)
-      formData.append("correspondent", metadata.correspondent);
-    if (metadata.document_type)
-      formData.append("document_type", metadata.document_type);
-    if (metadata.storage_path)
-      formData.append("storage_path", metadata.storage_path);
+    if (metadata.correspondent !== undefined)
+      formData.append("correspondent", String(metadata.correspondent));
+    if (metadata.document_type !== undefined)
+      formData.append("document_type", String(metadata.document_type));
+    if (metadata.storage_path !== undefined)
+      formData.append("storage_path", String(metadata.storage_path));
     if (metadata.tags) {
-      (metadata.tags as string[]).forEach((tag) =>
-        formData.append("tags", tag)
-      );
+      metadata.tags.forEach((tag) => formData.append("tags", String(tag)));
     }
-    if (metadata.archive_serial_number) {
+    if (metadata.archive_serial_number !== undefined) {
       formData.append(
         "archive_serial_number",
         String(metadata.archive_serial_number)
       );
     }
     if (metadata.custom_fields) {
-      (metadata.custom_fields as number[]).forEach((field) =>
+      metadata.custom_fields.forEach((field) =>
         formData.append("custom_fields", String(field))
       );
     }
@@ -157,11 +148,6 @@ export class PaperlessAPI {
         },
       }
     );
-
-    if (response.status < 200 || response.status >= 300) {
-      throw new Error(`HTTP error! status: ${response.status}`);
-    }
-
     return response.data;
   }
 
@@ -187,10 +173,9 @@ export class PaperlessAPI {
   }
 
   async searchDocuments(query: string): Promise<DocumentsResponse> {
-    const response = await this.request<DocumentsResponse>(
+    return this.request<DocumentsResponse>(
       `/documents/?query=${encodeURIComponent(query)}`
     );
-    return response;
   }
 
   async downloadDocument(
@@ -223,7 +208,6 @@ export class PaperlessAPI {
     return response;
   }
 
-  // Tag operations
   async getTags(queryString?: string): Promise<GetTagsResponse> {
     const url = queryString ? `/tags/?${queryString}` : "/tags/";
     return this.request<GetTagsResponse>(url);
@@ -253,7 +237,6 @@ export class PaperlessAPI {
     });
   }
 
-  // Correspondent operations
   async getCorrespondents(
     queryString?: string
   ): Promise<GetCorrespondentsResponse> {
@@ -292,7 +275,6 @@ export class PaperlessAPI {
     });
   }
 
-  // Document type operations
   async getDocumentTypes(queryString?: string): Promise<GetDocumentTypesResponse> {
     const url = queryString ? `/document_types/?${queryString}` : "/document_types/";
     return this.request<GetDocumentTypesResponse>(url);
@@ -321,7 +303,6 @@ export class PaperlessAPI {
     });
   }
 
-  // Custom field operations
   async getCustomFields(queryString?: string): Promise<GetCustomFieldsResponse> {
     const url = queryString ? `/custom_fields/?${queryString}` : "/custom_fields/";
     return this.request<GetCustomFieldsResponse>(url);
@@ -354,7 +335,6 @@ export class PaperlessAPI {
     });
   }
 
-  // Storage path operations
   async getStoragePaths(
     queryString?: string
   ): Promise<GetStoragePathsResponse> {
@@ -393,7 +373,6 @@ export class PaperlessAPI {
     });
   }
 
-  // Saved view operations
   async getSavedViews(
     queryString?: string
   ): Promise<GetSavedViewsResponse> {
@@ -430,7 +409,6 @@ export class PaperlessAPI {
     });
   }
 
-  // Raw request for binary responses (e.g., bulk download)
   async requestRaw<T = ArrayBuffer>(
     path: string,
     options: RequestInit & { responseType?: ResponseType } = {}
@@ -461,8 +439,12 @@ export class PaperlessAPI {
     }
   }
 
-  // Bulk object operations
-  async bulkEditObjects(objects, objectType, operation, parameters = {}) {
+  async bulkEditObjects(
+    objects: number[],
+    objectType: string,
+    operation: string,
+    parameters: Record<string, unknown> = {}
+  ): Promise<unknown> {
     return this.request("/bulk_edit_objects/", {
       method: "POST",
       body: JSON.stringify({

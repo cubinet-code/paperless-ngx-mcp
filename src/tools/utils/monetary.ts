@@ -16,7 +16,7 @@ export function getMonetaryValidationError(value: string): string | null {
   if (trailingMatch) {
     const amount = trailingMatch[1];
     const symbol = value.slice(-1);
-    const code = SYMBOL_TO_CODE[symbol] || "USD";
+    const code = SYMBOL_TO_CODE[symbol];
     const numericAmount = parseFloat(amount);
     const formattedAmount = isNaN(numericAmount) ? amount : numericAmount.toFixed(2);
     return (

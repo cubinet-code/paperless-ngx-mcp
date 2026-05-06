@@ -1,10 +1,11 @@
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp";
 import { z } from "zod";
 import { PaperlessAPI } from "../api/PaperlessAPI";
-import { MATCHING_ALGORITHM_DESCRIPTION } from "../api/types";
 import { Annotations } from "./utils/annotations";
 import { withErrorHandling } from "./utils/middlewares";
 import { buildQueryString } from "./utils/queryString";
+import { deletedResponse, requireConfirm } from "./utils/responses";
+import { matchingAlgorithmField, paginationFields } from "./utils/schemas";
 
 const workflowActionFields = {
   assign_title: z.string().max(256).nullable().optional(),
@@ -65,13 +66,7 @@ const workflowTriggerFields = {
     .optional()
     .describe("Filename pattern to match"),
   filter_mailrule: z.number().nullable().optional(),
-  matching_algorithm: z
-    .number()
-    .int()
-    .min(0)
-    .max(6)
-    .optional()
-    .describe(MATCHING_ALGORITHM_DESCRIPTION),
+  matching_algorithm: matchingAlgorithmField,
   match: z.string().max(256).optional(),
   is_insensitive: z.boolean().optional(),
   filter_has_tags: z.array(z.number()).optional(),
@@ -88,13 +83,9 @@ export function registerWorkflowTools(server: McpServer, api: PaperlessAPI) {
   server.tool(
     "list_workflow_actions",
     "List all workflow actions with optional pagination.",
-    {
-      page: z.number().int().min(1).optional().describe("Page number (1-based)"),
-      page_size: z.number().int().min(1).optional().describe("Number of items per page"),
-    },
+    paginationFields,
     Annotations.READ,
     withErrorHandling(async (args) => {
-      if (!api) throw new Error("Please configure API connection first");
       const queryString = buildQueryString(args);
       const response = await api.request(
         `/workflow_actions/${queryString ? `?${queryString}` : ""}`
@@ -111,7 +102,6 @@ export function registerWorkflowTools(server: McpServer, api: PaperlessAPI) {
     { id: z.number() },
     Annotations.READ,
     withErrorHandling(async (args) => {
-      if (!api) throw new Error("Please configure API connection first");
       const response = await api.request(`/workflow_actions/${args.id}/`);
       return {
         content: [{ type: "text", text: JSON.stringify(response) }],
@@ -130,7 +120,6 @@ export function registerWorkflowTools(server: McpServer, api: PaperlessAPI) {
     },
     Annotations.CREATE,
     withErrorHandling(async (args) => {
-      if (!api) throw new Error("Please configure API connection first");
       const response = await api.request("/workflow_actions/", {
         method: "POST",
         body: JSON.stringify(args),
@@ -151,7 +140,6 @@ export function registerWorkflowTools(server: McpServer, api: PaperlessAPI) {
     },
     Annotations.UPDATE,
     withErrorHandling(async (args) => {
-      if (!api) throw new Error("Please configure API connection first");
       const { id, ...data } = args;
       const response = await api.request(`/workflow_actions/${id}/`, {
         method: "PATCH",
@@ -174,33 +162,20 @@ export function registerWorkflowTools(server: McpServer, api: PaperlessAPI) {
     },
     Annotations.DELETE,
     withErrorHandling(async (args) => {
-      if (!api) throw new Error("Please configure API connection first");
-      if (!args.confirm) {
-        throw new Error(
-          "Confirmation required for destructive operation. Set confirm: true to proceed."
-        );
-      }
+      requireConfirm(args.confirm);
       await api.request(`/workflow_actions/${args.id}/`, {
         method: "DELETE",
       });
-      return {
-        content: [
-          { type: "text", text: JSON.stringify({ status: "deleted" }) },
-        ],
-      };
+      return deletedResponse();
     })
   );
 
   server.tool(
     "list_workflow_triggers",
     "List all workflow triggers with optional pagination.",
-    {
-      page: z.number().int().min(1).optional().describe("Page number (1-based)"),
-      page_size: z.number().int().min(1).optional().describe("Number of items per page"),
-    },
+    paginationFields,
     Annotations.READ,
     withErrorHandling(async (args) => {
-      if (!api) throw new Error("Please configure API connection first");
       const queryString = buildQueryString(args);
       const response = await api.request(
         `/workflow_triggers/${queryString ? `?${queryString}` : ""}`
@@ -217,7 +192,6 @@ export function registerWorkflowTools(server: McpServer, api: PaperlessAPI) {
     { id: z.number() },
     Annotations.READ,
     withErrorHandling(async (args) => {
-      if (!api) throw new Error("Please configure API connection first");
       const response = await api.request(`/workflow_triggers/${args.id}/`);
       return {
         content: [{ type: "text", text: JSON.stringify(response) }],
@@ -238,7 +212,6 @@ export function registerWorkflowTools(server: McpServer, api: PaperlessAPI) {
     },
     Annotations.CREATE,
     withErrorHandling(async (args) => {
-      if (!api) throw new Error("Please configure API connection first");
       const response = await api.request("/workflow_triggers/", {
         method: "POST",
         body: JSON.stringify(args),
@@ -259,7 +232,6 @@ export function registerWorkflowTools(server: McpServer, api: PaperlessAPI) {
     },
     Annotations.UPDATE,
     withErrorHandling(async (args) => {
-      if (!api) throw new Error("Please configure API connection first");
       const { id, ...data } = args;
       const response = await api.request(`/workflow_triggers/${id}/`, {
         method: "PATCH",
@@ -282,20 +254,11 @@ export function registerWorkflowTools(server: McpServer, api: PaperlessAPI) {
     },
     Annotations.DELETE,
     withErrorHandling(async (args) => {
-      if (!api) throw new Error("Please configure API connection first");
-      if (!args.confirm) {
-        throw new Error(
-          "Confirmation required for destructive operation. Set confirm: true to proceed."
-        );
-      }
+      requireConfirm(args.confirm);
       await api.request(`/workflow_triggers/${args.id}/`, {
         method: "DELETE",
       });
-      return {
-        content: [
-          { type: "text", text: JSON.stringify({ status: "deleted" }) },
-        ],
-      };
+      return deletedResponse();
     })
   );
 }

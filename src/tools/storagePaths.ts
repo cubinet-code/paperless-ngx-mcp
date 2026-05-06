@@ -1,7 +1,6 @@
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp";
 import { z } from "zod";
 import { PaperlessAPI } from "../api/PaperlessAPI";
-import { MATCHING_ALGORITHM_DESCRIPTION } from "../api/types";
 import {
   enhanceMatchingAlgorithm,
   enhanceMatchingAlgorithmArray,
@@ -9,6 +8,12 @@ import {
 import { Annotations } from "./utils/annotations";
 import { withErrorHandling } from "./utils/middlewares";
 import { buildQueryString } from "./utils/queryString";
+import { deletedResponse, requireConfirm } from "./utils/responses";
+import {
+  matchingAlgorithmField,
+  nameFilterFields,
+  paginationFields,
+} from "./utils/schemas";
 
 export function registerStoragePathTools(
   server: McpServer,
@@ -18,17 +23,12 @@ export function registerStoragePathTools(
     "list_storage_paths",
     "List all storage paths with optional filtering and pagination. Storage paths define where documents are stored on disk.",
     {
-      page: z.number().int().min(1).optional().describe("Page number (1-based)"),
-      page_size: z.number().int().min(1).optional().describe("Number of items per page"),
-      name__icontains: z.string().optional(),
-      name__iendswith: z.string().optional(),
-      name__iexact: z.string().optional(),
-      name__istartswith: z.string().optional(),
+      ...paginationFields,
+      ...nameFilterFields,
       ordering: z.string().optional(),
     },
     Annotations.READ,
     withErrorHandling(async (args) => {
-      if (!api) throw new Error("Please configure API connection first");
       const queryString = buildQueryString(args);
       const response = await api.getStoragePaths(queryString || undefined);
       const enhancedResults = enhanceMatchingAlgorithmArray(
@@ -54,11 +54,9 @@ export function registerStoragePathTools(
     { id: z.number() },
     Annotations.READ,
     withErrorHandling(async (args) => {
-      if (!api) throw new Error("Please configure API connection first");
       const response = await api.getStoragePath(args.id);
-      const enhanced = enhanceMatchingAlgorithm(response);
       return {
-        content: [{ type: "text", text: JSON.stringify(enhanced) }],
+        content: [{ type: "text", text: JSON.stringify(enhanceMatchingAlgorithm(response)) }],
       };
     })
   );
@@ -70,22 +68,14 @@ export function registerStoragePathTools(
       name: z.string(),
       path: z.string().describe("The path template, e.g. '{{ created_year }}/{{ correspondent }}/{{ title }}'"),
       match: z.string().optional(),
-      matching_algorithm: z
-        .number()
-        .int()
-        .min(0)
-        .max(6)
-        .optional()
-        .describe(MATCHING_ALGORITHM_DESCRIPTION),
+      matching_algorithm: matchingAlgorithmField,
       is_insensitive: z.boolean().optional().describe("Whether matching is case-insensitive"),
     },
     Annotations.CREATE,
     withErrorHandling(async (args) => {
-      if (!api) throw new Error("Please configure API connection first");
       const response = await api.createStoragePath(args);
-      const enhanced = enhanceMatchingAlgorithm(response);
       return {
-        content: [{ type: "text", text: JSON.stringify(enhanced) }],
+        content: [{ type: "text", text: JSON.stringify(enhanceMatchingAlgorithm(response)) }],
       };
     })
   );
@@ -98,23 +88,15 @@ export function registerStoragePathTools(
       name: z.string().optional(),
       path: z.string().optional().describe("The path template"),
       match: z.string().optional(),
-      matching_algorithm: z
-        .number()
-        .int()
-        .min(0)
-        .max(6)
-        .optional()
-        .describe(MATCHING_ALGORITHM_DESCRIPTION),
+      matching_algorithm: matchingAlgorithmField,
       is_insensitive: z.boolean().optional().describe("Whether matching is case-insensitive"),
     },
     Annotations.UPDATE,
     withErrorHandling(async (args) => {
-      if (!api) throw new Error("Please configure API connection first");
       const { id, ...data } = args;
       const response = await api.updateStoragePath(id, data);
-      const enhanced = enhanceMatchingAlgorithm(response);
       return {
-        content: [{ type: "text", text: JSON.stringify(enhanced) }],
+        content: [{ type: "text", text: JSON.stringify(enhanceMatchingAlgorithm(response)) }],
       };
     })
   );
@@ -130,18 +112,9 @@ export function registerStoragePathTools(
     },
     Annotations.DELETE,
     withErrorHandling(async (args) => {
-      if (!api) throw new Error("Please configure API connection first");
-      if (!args.confirm) {
-        throw new Error(
-          "Confirmation required for destructive operation. Set confirm: true to proceed."
-        );
-      }
+      requireConfirm(args.confirm);
       await api.deleteStoragePath(args.id);
-      return {
-        content: [
-          { type: "text", text: JSON.stringify({ status: "deleted" }) },
-        ],
-      };
+      return deletedResponse();
     })
   );
 
@@ -156,18 +129,11 @@ export function registerStoragePathTools(
           "The path template to test, e.g. '{{ created_year }}/{{ correspondent }}/{{ title }}'"
         ),
       match: z.string().optional(),
-      matching_algorithm: z
-        .number()
-        .int()
-        .min(0)
-        .max(6)
-        .optional()
-        .describe(MATCHING_ALGORITHM_DESCRIPTION),
+      matching_algorithm: matchingAlgorithmField,
       is_insensitive: z.boolean().optional(),
     },
     Annotations.READ,
     withErrorHandling(async (args) => {
-      if (!api) throw new Error("Please configure API connection first");
       const response = await api.request("/storage_paths/test/", {
         method: "POST",
         body: JSON.stringify(args),

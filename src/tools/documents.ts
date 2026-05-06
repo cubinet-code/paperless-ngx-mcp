@@ -1,16 +1,37 @@
-import fs from "node:fs";
+import fs from "node:fs/promises";
 import path from "node:path";
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp";
 import { z } from "zod";
 import { convertDocsWithNames } from "../api/documentEnhancer";
 import { PaperlessAPI } from "../api/PaperlessAPI";
 import { BulkEditParameters, Document } from "../api/types";
+import { Annotations } from "./utils/annotations";
+import { CUSTOM_FIELD_VALUE_DESCRIPTION } from "./utils/descriptions";
 import { arrayNotEmpty, objectNotEmpty } from "./utils/empty";
 import { withErrorHandling } from "./utils/middlewares";
 import { validateCustomFields } from "./utils/monetary";
-import { Annotations } from "./utils/annotations";
-import { CUSTOM_FIELD_VALUE_DESCRIPTION } from "./utils/descriptions";
+import {
+  parseFilenameFromContentDisposition,
+  requireConfirm,
+} from "./utils/responses";
 import { buildQueryString } from "./utils/queryString";
+import { paginationFields } from "./utils/schemas";
+
+const BASE64_REGEX = /^[A-Za-z0-9+/]+={0,2}$/;
+
+function isLikelyBase64(value: string): boolean {
+  return value.length > 0 && value.length % 4 === 0 && BASE64_REGEX.test(value);
+}
+
+function getContentDispositionHeader(headers: unknown): string | null {
+  if (!headers || typeof headers !== "object") return null;
+  const h = headers as { get?: (name: string) => string | null } & Record<
+    string,
+    string | undefined
+  >;
+  if (typeof h.get === "function") return h.get("content-disposition");
+  return h["content-disposition"] ?? null;
+}
 
 export function registerDocumentTools(server: McpServer, api: PaperlessAPI) {
   server.tool(
@@ -90,18 +111,12 @@ export function registerDocumentTools(server: McpServer, api: PaperlessAPI) {
         ),
     },
     Annotations.BULK_EDIT,
-    withErrorHandling(async (args, extra) => {
-      if (!api) throw new Error("Please configure API connection first");
-      if (args.method === "delete" && !args.confirm) {
-        throw new Error(
-          "Confirmation required for destructive operation. Set confirm: true to proceed."
-        );
-      }
+    withErrorHandling(async (args) => {
+      if (args.method === "delete") requireConfirm(args.confirm);
       const { documents, method, add_custom_fields, confirm, ...parameters } = args;
 
       validateCustomFields(add_custom_fields);
 
-      // Transform add_custom_fields into the two separate API parameters
       const apiParameters: BulkEditParameters = { ...parameters };
       if (add_custom_fields && add_custom_fields.length > 0) {
         apiParameters.assign_custom_fields = add_custom_fields.map(
@@ -119,7 +134,7 @@ export function registerDocumentTools(server: McpServer, api: PaperlessAPI) {
         content: [
           {
             type: "text",
-            text: JSON.stringify({ result: response.result || response }),
+            text: JSON.stringify({ result: response.result }),
           },
         ],
       };
@@ -142,21 +157,13 @@ export function registerDocumentTools(server: McpServer, api: PaperlessAPI) {
       custom_fields: z.array(z.number()).optional(),
     },
     Annotations.CREATE,
-    withErrorHandling(async (args, extra) => {
-      if (!api) throw new Error("Please configure API connection first");
-
+    withErrorHandling(async (args) => {
       const { file, filename, ...metadata } = args;
       let document: Buffer;
       if (path.isAbsolute(file)) {
-        // Treat as file path — read from disk
-        if (!fs.existsSync(file)) {
-          throw new Error(`File not found: ${file}`);
-        }
-        document = fs.readFileSync(file);
+        document = await fs.readFile(file);
       } else {
-        // Treat as base64-encoded content
-        const base64Regex = /^[A-Za-z0-9+/]*={0,2}$/;
-        if (!base64Regex.test(file)) {
+        if (!isLikelyBase64(file)) {
           throw new Error(
             "Invalid input: provide a valid base64 string or an absolute file path."
           );
@@ -166,14 +173,12 @@ export function registerDocumentTools(server: McpServer, api: PaperlessAPI) {
 
       const cleanedMetadata = Object.fromEntries(
         Object.entries(metadata).filter(([, v]) => v !== undefined)
-      ) as Record<string, string | number | string[] | number[]>;
+      );
       const response = await api.postDocument(document, filename, cleanedMetadata);
-      let result;
-      if (typeof response === "string" && /^\d+$/.test(response)) {
-        result = { id: Number(response) };
-      } else {
-        result = { status: response };
-      }
+      const result =
+        typeof response === "string" && /^\d+$/.test(response)
+          ? { id: Number(response) }
+          : { status: response };
       return {
         content: [
           {
@@ -189,8 +194,7 @@ export function registerDocumentTools(server: McpServer, api: PaperlessAPI) {
     "list_documents",
     "List and filter documents by fields such as title, correspondent, document type, tag, storage path, creation date, and more. IMPORTANT: For queries like 'the last 3 contributions' or when searching by tag, correspondent, document type, or storage path, you should FIRST use the relevant tool (e.g., 'list_tags', 'list_correspondents', 'list_document_types', 'list_storage_paths') to find the correct ID, and then use that ID as a filter here. Only use the 'search' argument for free-text search when no specific field applies. Using the correct ID filter will yield much more accurate results. Note: Document content is excluded from results by default. Use 'get_document_content' to retrieve content when needed.",
     {
-      page: z.number().int().min(1).optional().describe("Page number (1-based)"),
-      page_size: z.number().int().min(1).optional().describe("Number of items per page"),
+      ...paginationFields,
       search: z.string().optional(),
       correspondent: z.number().optional(),
       document_type: z.number().optional(),
@@ -203,27 +207,23 @@ export function registerDocumentTools(server: McpServer, api: PaperlessAPI) {
       custom_field_query: z.string().optional().describe("Filter by custom field values using query syntax, e.g. 'custom_field_123=value'"),
     },
     Annotations.READ,
-    withErrorHandling(async (args, extra) => {
-      if (!api) throw new Error("Please configure API connection first");
-      const query = new URLSearchParams();
-      if (args.page) query.set("page", args.page.toString());
-      if (args.page_size) query.set("page_size", args.page_size.toString());
-      if (args.search) query.set("search", args.search);
-      if (args.correspondent)
-        query.set("correspondent__id", args.correspondent.toString());
-      if (args.document_type)
-        query.set("document_type__id", args.document_type.toString());
-      if (args.tag) query.set("tags__id", args.tag.toString());
-      if (args.storage_path)
-        query.set("storage_path__id", args.storage_path.toString());
-      if (args.created__date__gte) query.set("created__date__gte", args.created__date__gte);
-      if (args.created__date__lte) query.set("created__date__lte", args.created__date__lte);
-      if (args.ordering) query.set("ordering", args.ordering);
-      if (args.more_like_id) query.set("more_like_id", args.more_like_id.toString());
-      if (args.custom_field_query) query.set("custom_field_query", args.custom_field_query);
-
+    withErrorHandling(async (args) => {
+      const {
+        correspondent,
+        document_type,
+        tag,
+        storage_path,
+        ...rest
+      } = args;
+      const queryString = buildQueryString({
+        ...rest,
+        correspondent__id: correspondent,
+        document_type__id: document_type,
+        tags__id: tag,
+        storage_path__id: storage_path,
+      });
       const docsResponse = await api.getDocuments(
-        query.toString() ? `?${query.toString()}` : ""
+        queryString ? `?${queryString}` : ""
       );
       return convertDocsWithNames(docsResponse, api);
     })
@@ -236,8 +236,7 @@ export function registerDocumentTools(server: McpServer, api: PaperlessAPI) {
       id: z.number(),
     },
     Annotations.READ,
-    withErrorHandling(async (args, extra) => {
-      if (!api) throw new Error("Please configure API connection first");
+    withErrorHandling(async (args) => {
       const doc = await api.getDocument(args.id);
       return convertDocsWithNames(doc, api);
     })
@@ -250,8 +249,7 @@ export function registerDocumentTools(server: McpServer, api: PaperlessAPI) {
       id: z.number(),
     },
     Annotations.READ,
-    withErrorHandling(async (args, extra) => {
-      if (!api) throw new Error("Please configure API connection first");
+    withErrorHandling(async (args) => {
       const doc = await api.getDocument(args.id);
       return {
         content: [
@@ -275,8 +273,7 @@ export function registerDocumentTools(server: McpServer, api: PaperlessAPI) {
       query: z.string(),
     },
     Annotations.READ,
-    withErrorHandling(async (args, extra) => {
-      if (!api) throw new Error("Please configure API connection first");
+    withErrorHandling(async (args) => {
       const docsResponse = await api.searchDocuments(args.query);
       return convertDocsWithNames(docsResponse, api);
     })
@@ -290,16 +287,12 @@ export function registerDocumentTools(server: McpServer, api: PaperlessAPI) {
       original: z.boolean().optional(),
     },
     Annotations.READ,
-    withErrorHandling(async (args, extra) => {
-      if (!api) throw new Error("Please configure API connection first");
+    withErrorHandling(async (args) => {
       const response = await api.downloadDocument(args.id, args.original);
-      const filename =
-        (typeof response.headers.get === "function"
-          ? response.headers.get("content-disposition")
-          : response.headers["content-disposition"]
-        )
-          ?.split("filename=")[1]
-          ?.replace(/"/g, "") || `document-${args.id}`;
+      const filename = parseFilenameFromContentDisposition(
+        getContentDispositionHeader(response.headers),
+        `document-${args.id}`
+      );
       return {
         content: [
           {
@@ -322,8 +315,7 @@ export function registerDocumentTools(server: McpServer, api: PaperlessAPI) {
       id: z.number(),
     },
     Annotations.READ,
-    withErrorHandling(async (args, extra) => {
-      if (!api) throw new Error("Please configure API connection first");
+    withErrorHandling(async (args) => {
       const response = await api.getThumbnail(args.id);
       return {
         content: [
@@ -405,8 +397,7 @@ export function registerDocumentTools(server: McpServer, api: PaperlessAPI) {
         .describe("Array of custom field values to assign"),
     },
     Annotations.UPDATE,
-    withErrorHandling(async (args, extra) => {
-      if (!api) throw new Error("Please configure API connection first");
+    withErrorHandling(async (args) => {
       const { id, ...updateData } = args;
 
       validateCustomFields(updateData.custom_fields);
@@ -432,7 +423,6 @@ export function registerDocumentTools(server: McpServer, api: PaperlessAPI) {
     },
     Annotations.CREATE,
     withErrorHandling(async (args) => {
-      if (!api) throw new Error("Please configure API connection first");
       const { id, ...emailData } = args;
       const response = await api.request(`/documents/${id}/email/`, {
         method: "POST",
@@ -449,12 +439,10 @@ export function registerDocumentTools(server: McpServer, api: PaperlessAPI) {
     "Get the change history / audit log for a document, showing who changed what and when.",
     {
       id: z.number().describe("The document ID"),
-      page: z.number().int().min(1).optional().describe("Page number (1-based)"),
-      page_size: z.number().int().min(1).optional().describe("Number of items per page"),
+      ...paginationFields,
     },
     Annotations.READ,
     withErrorHandling(async (args) => {
-      if (!api) throw new Error("Please configure API connection first");
       const { id, ...pagination } = args;
       const queryString = buildQueryString(pagination);
       const response = await api.request(
@@ -474,7 +462,6 @@ export function registerDocumentTools(server: McpServer, api: PaperlessAPI) {
     },
     Annotations.READ,
     withErrorHandling(async (args) => {
-      if (!api) throw new Error("Please configure API connection first");
       const response = await api.requestRaw(`/documents/${args.id}/preview/`, {
         responseType: "arraybuffer",
       });

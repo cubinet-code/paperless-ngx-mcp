@@ -1,12 +1,10 @@
 import { CallToolResult } from "@modelcontextprotocol/sdk/types";
 import { PaperlessAPI } from "./PaperlessAPI";
-import { Document, DocumentsResponse } from "./types";
+import { CustomFieldInstance, Document, DocumentsResponse } from "./types";
 import { NamedItem } from "./utils";
 
-interface CustomField {
-  field: number;
+export interface EnhancedCustomField extends CustomFieldInstance {
   name: string;
-  value: string | number | boolean | object | null;
 }
 
 export interface EnhancedDocument
@@ -17,7 +15,7 @@ export interface EnhancedDocument
   correspondent: NamedItem | null;
   document_type: NamedItem | null;
   tags: NamedItem[];
-  custom_fields: CustomField[];
+  custom_fields: EnhancedCustomField[];
 }
 
 export async function convertDocsWithNames(
@@ -42,7 +40,7 @@ export async function convertDocsWithNames(
       content: [
         {
           type: "text",
-          text: enhancedResults?.length
+          text: enhancedResults.length
             ? JSON.stringify({
                 ...input,
                 results: enhancedResults,
@@ -53,16 +51,6 @@ export async function convertDocsWithNames(
     };
   }
 
-  if (!input) {
-    return {
-      content: [
-        {
-          type: "text",
-          text: "No document found",
-        },
-      ],
-    };
-  }
   const [enhanced] = await enhanceDocumentsArray([input], api);
   return {
     content: [
@@ -77,8 +65,8 @@ export async function convertDocsWithNames(
 async function enhanceDocumentsArray(
   documents: Document[],
   api: PaperlessAPI
-): Promise<Omit<EnhancedDocument, 'content'>[]> {
-  if (!documents?.length) {
+): Promise<EnhancedDocument[]> {
+  if (!documents.length) {
     return [];
   }
 
@@ -102,13 +90,10 @@ async function enhanceDocumentsArray(
     (customFields.results || []).map((cf) => [cf.id, cf.name])
   );
 
-  return documents
-    .map((doc) => {
-      const { content, notes, ...slim } = doc;
-      return slim;
-    })
-    .map((doc) => ({
-      ...doc,
+  return documents.map((doc) => {
+    const { content, notes, ...slim } = doc;
+    return {
+      ...slim,
       correspondent: doc.correspondent
         ? {
             id: doc.correspondent,
@@ -121,21 +106,19 @@ async function enhanceDocumentsArray(
         ? {
             id: doc.document_type,
             name:
-              documentTypeMap.get(doc.document_type) || String(doc.document_type),
+              documentTypeMap.get(doc.document_type) ||
+              String(doc.document_type),
           }
         : null,
-      tags: Array.isArray(doc.tags)
-        ? doc.tags.map((tagId) => ({
-            id: tagId,
-            name: tagMap.get(tagId) || String(tagId),
-          }))
-        : doc.tags,
-      custom_fields: Array.isArray(doc.custom_fields)
-        ? doc.custom_fields.map((field) => ({
-            field: field.field,
-            name: customFieldMap.get(field.field) || String(field.field),
-            value: field.value,
-          }))
-        : doc.custom_fields,
-    }));
+      tags: doc.tags.map((tagId) => ({
+        id: tagId,
+        name: tagMap.get(tagId) || String(tagId),
+      })),
+      custom_fields: doc.custom_fields.map((field) => ({
+        field: field.field,
+        name: customFieldMap.get(field.field) || String(field.field),
+        value: field.value,
+      })),
+    };
+  });
 }

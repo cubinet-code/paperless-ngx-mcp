@@ -1,58 +1,42 @@
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp";
 import { z } from "zod";
 import { PaperlessAPI } from "../api/PaperlessAPI";
-import { MATCHING_ALGORITHM_DESCRIPTION } from "../api/types";
 import {
   enhanceMatchingAlgorithm,
   enhanceMatchingAlgorithmArray,
 } from "../api/utils";
 import { Annotations } from "./utils/annotations";
+import { registerBulkEditTool } from "./utils/bulkEdit";
+import { applyIsEmptyFilter } from "./utils/listFilter";
 import { withErrorHandling } from "./utils/middlewares";
-import { fetchAllPages } from "./utils/paginate";
 import { buildQueryString } from "./utils/queryString";
+import { deletedResponse, requireConfirm } from "./utils/responses";
+import {
+  matchingAlgorithmField,
+  nameFilterFields,
+  paginationFields,
+} from "./utils/schemas";
 
 export function registerTagTools(server: McpServer, api: PaperlessAPI) {
   server.tool(
     "list_tags",
     "List all tags. IMPORTANT: When a user query may refer to a tag or document type, you should fetch all tags and all document types up front (with a large enough page_size), cache them for the session, and search locally for matches by name or slug before making further API calls. This reduces redundant requests and handles ambiguity between tags and document types efficiently.",
     {
-      page: z.number().int().min(1).optional().describe("Page number (1-based)"),
-      page_size: z.number().int().min(1).optional().describe("Number of items per page"),
-      name__icontains: z.string().optional(),
-      name__iendswith: z.string().optional(),
-      name__iexact: z.string().optional(),
-      name__istartswith: z.string().optional(),
+      ...paginationFields,
+      ...nameFilterFields,
       ordering: z.string().optional(),
       is_empty: z.boolean().optional().describe("Filter to only tags with 0 documents (true) or only those with >=1 document (false). Paginates through all results so the filter is global, not page-scoped."),
     },
     Annotations.READ,
     withErrorHandling(async (args) => {
-      if (!api) throw new Error("Please configure API connection first");
       const { is_empty, ...apiArgs } = args;
 
       if (is_empty !== undefined) {
-        const all = await fetchAllPages(
+        return applyIsEmptyFilter(
           (qs) => api.getTags(qs),
-          apiArgs
+          apiArgs,
+          is_empty
         );
-        const filtered = all.filter((t: any) =>
-          is_empty ? t.document_count === 0 : t.document_count > 0
-        );
-        const enhanced = enhanceMatchingAlgorithmArray(filtered);
-        return {
-          content: [
-            {
-              type: "text",
-              text: JSON.stringify({
-                count: enhanced.length,
-                next: null,
-                previous: null,
-                all: enhanced.map((t: any) => t.id),
-                results: enhanced,
-              }),
-            },
-          ],
-        };
       }
 
       const queryString = buildQueryString(apiArgs);
@@ -77,13 +61,11 @@ export function registerTagTools(server: McpServer, api: PaperlessAPI) {
     "Get a specific tag by ID with full details including matching rules.",
     { id: z.number() },
     Annotations.READ,
-    withErrorHandling(async (args, extra) => {
-      if (!api) throw new Error("Please configure API connection first");
+    withErrorHandling(async (args) => {
       const response = await api.getTag(args.id);
-      const enhancedTag = enhanceMatchingAlgorithm(response);
       return {
         content: [
-          { type: "text", text: JSON.stringify(enhancedTag) },
+          { type: "text", text: JSON.stringify(enhanceMatchingAlgorithm(response)) },
         ],
       };
     })
@@ -99,26 +81,18 @@ export function registerTagTools(server: McpServer, api: PaperlessAPI) {
         .regex(/^#[0-9A-Fa-f]{6}$/)
         .optional(),
       match: z.string().optional(),
-      matching_algorithm: z
-        .number()
-        .int()
-        .min(0)
-        .max(6)
-        .optional()
-        .describe(MATCHING_ALGORITHM_DESCRIPTION),
+      matching_algorithm: matchingAlgorithmField,
       is_insensitive: z.boolean().optional().describe("Whether matching is case-insensitive"),
       parent: z.number().nullable().optional().describe("Parent tag ID for hierarchical tags"),
     },
     Annotations.CREATE,
-    withErrorHandling(async (args, extra) => {
-      if (!api) throw new Error("Please configure API connection first");
+    withErrorHandling(async (args) => {
       const tag = await api.createTag(args);
-      const enhancedTag = enhanceMatchingAlgorithm(tag);
       return {
         content: [
           {
             type: "text",
-            text: JSON.stringify(enhancedTag),
+            text: JSON.stringify(enhanceMatchingAlgorithm(tag)),
           },
         ],
       };
@@ -136,27 +110,19 @@ export function registerTagTools(server: McpServer, api: PaperlessAPI) {
         .regex(/^#[0-9A-Fa-f]{6}$/)
         .optional(),
       match: z.string().optional(),
-      matching_algorithm: z
-        .number()
-        .int()
-        .min(0)
-        .max(6)
-        .optional()
-        .describe(MATCHING_ALGORITHM_DESCRIPTION),
+      matching_algorithm: matchingAlgorithmField,
       is_insensitive: z.boolean().optional().describe("Whether matching is case-insensitive"),
       parent: z.number().nullable().optional().describe("Parent tag ID for hierarchical tags"),
     },
     Annotations.UPDATE,
-    withErrorHandling(async (args, extra) => {
-      if (!api) throw new Error("Please configure API connection first");
+    withErrorHandling(async (args) => {
       const { id, ...data } = args;
       const tag = await api.updateTag(id, data);
-      const enhancedTag = enhanceMatchingAlgorithm(tag);
       return {
         content: [
           {
             type: "text",
-            text: JSON.stringify(enhancedTag),
+            text: JSON.stringify(enhanceMatchingAlgorithm(tag)),
           },
         ],
       };
@@ -173,72 +139,18 @@ export function registerTagTools(server: McpServer, api: PaperlessAPI) {
         .describe("Must be true to confirm this destructive operation"),
     },
     Annotations.DELETE,
-    withErrorHandling(async (args, extra) => {
-      if (!api) throw new Error("Please configure API connection first");
-      if (!args.confirm) {
-        throw new Error(
-          "Confirmation required for destructive operation. Set confirm: true to proceed."
-        );
-      }
+    withErrorHandling(async (args) => {
+      requireConfirm(args.confirm);
       await api.deleteTag(args.id);
-      return {
-        content: [
-          {
-            type: "text",
-            text: JSON.stringify({ status: "deleted" }),
-          },
-        ],
-      };
+      return deletedResponse();
     })
   );
 
-  server.tool(
-    "bulk_edit_tags",
-    "Manage tag objects themselves (permissions, delete). ⚠️ This does NOT add/remove tags on documents — use bulk_edit_documents with method 'add_tag'/'remove_tag'/'modify_tags' for that. WARNING: 'delete' permanently removes tags from the entire system.",
-    {
-      tag_ids: z.array(z.number()),
-      operation: z.enum(["set_permissions", "delete"]),
-      confirm: z
-        .boolean()
-        .optional()
-        .describe(
-          "Must be true when operation is 'delete' to confirm destructive operation"
-        ),
-      owner: z.number().optional(),
-      permissions: z
-        .object({
-          view: z.object({
-            users: z.array(z.number()).optional(),
-            groups: z.array(z.number()).optional(),
-          }),
-          change: z.object({
-            users: z.array(z.number()).optional(),
-            groups: z.array(z.number()).optional(),
-          }),
-        })
-        .optional(),
-      merge: z.boolean().optional(),
-    },
-    Annotations.BULK_EDIT,
-    withErrorHandling(async (args, extra) => {
-      if (!api) throw new Error("Please configure API connection first");
-      if (args.operation === "delete" && !args.confirm) {
-        throw new Error(
-          "Confirmation required for destructive operation. Set confirm: true to proceed."
-        );
-      }
-      return api.bulkEditObjects(
-        args.tag_ids,
-        "tags",
-        args.operation,
-        args.operation === "set_permissions"
-          ? {
-              owner: args.owner,
-              permissions: args.permissions,
-              merge: args.merge,
-            }
-          : {}
-      );
-    })
-  );
+  registerBulkEditTool(server, api, {
+    toolName: "bulk_edit_tags",
+    description:
+      "Manage tag objects themselves (permissions, delete). ⚠️ This does NOT add/remove tags on documents — use bulk_edit_documents with method 'add_tag'/'remove_tag'/'modify_tags' for that. WARNING: 'delete' permanently removes tags from the entire system.",
+    idsField: "tag_ids",
+    objectType: "tags",
+  });
 }

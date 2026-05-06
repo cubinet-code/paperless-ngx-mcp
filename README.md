@@ -114,6 +114,17 @@ The server registers tools across ten domains.
 ### System / Notes / Trash / Tasks
 `get_statistics`, `list_document_notes`, `create_document_note`, `delete_document_note`, `list_trash`, `restore_from_trash`, `empty_trash`, `list_tasks`, `acknowledge_tasks`
 
+## Prompts
+
+The server also registers MCP **prompts** — reusable, parameterized instructions that surface as slash commands in clients like Claude Code (e.g. `/mcp__paperless__triage_inbox`).
+
+### `triage_inbox`
+
+Walks the assistant through inbox triage: gather existing tags / correspondents / document types, propose metadata for each inbox document **preferring existing items**, present a confirmation table, and only apply changes after the user replies `apply`. New correspondents / types / tags are flagged `(NEW)` so you can veto creations before they happen.
+
+Argument:
+- `limit` (optional, default `25`): maximum number of inbox documents to triage in one pass.
+
 ### Notable tool details
 
 #### `bulk_edit_documents`
