@@ -1,0 +1,8 @@
+blank_issues_enabled: false
+contact_links:
+  - name: Paperless-NGX REST API documentation
+    url: https://docs.paperless-ngx.com/api/
+    about: For questions about the underlying Paperless-NGX API behaviour, not this MCP wrapper.
+  - name: Model Context Protocol specification
+    url: https://modelcontextprotocol.io/
+    about: For questions about how MCP works in general (tool calls, transports, clients).
