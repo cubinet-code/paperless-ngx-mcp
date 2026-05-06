@@ -7,25 +7,44 @@ A [Model Context Protocol](https://modelcontextprotocol.io/) server for [Paperle
 
 ## Quick Start
 
+The server is published to npm as [`paperless-ngx-mcp`](https://www.npmjs.com/package/paperless-ngx-mcp). You can run it with `npx` — no clone or build required.
+
+### Claude Code
+
 ```bash
-git clone https://github.com/cubinet-code/paperless-ngx-mcp.git
-cd paperless-ngx-mcp
-npm install
-npm run build
+claude mcp add paperless --scope user \
+  --env PAPERLESS_URL=https://your-paperless-instance \
+  --env PAPERLESS_API_KEY=your-api-token \
+  -- npx -y paperless-ngx-mcp
 ```
 
-Add to your MCP client config (e.g. `~/.claude/.mcp.json`, or the equivalent for Cursor / Claude Desktop / Cline / etc.):
+Drop `--scope user` to install for the current project only. See `claude mcp add --help` for more options.
+
+### Codex CLI
+
+```bash
+codex mcp add paperless \
+  --env PAPERLESS_URL=https://your-paperless-instance \
+  --env PAPERLESS_API_KEY=your-api-token \
+  -- npx -y paperless-ngx-mcp
+```
+
+This writes the entry to `~/.codex/config.toml`.
+
+### Claude Desktop, Cursor, Cline, and other MCP clients
+
+Add this to your client's MCP config file (e.g. `claude_desktop_config.json`, `~/.cursor/mcp.json`, `~/.config/cline/mcp.json`):
 
 ```json
 {
   "mcpServers": {
     "paperless": {
-      "command": "node",
-      "args": ["/absolute/path/to/paperless-ngx-mcp/build/index.js"],
+      "command": "npx",
+      "args": ["-y", "paperless-ngx-mcp"],
       "env": {
-        "PAPERLESS_URL": "http://your-paperless-instance:8000",
+        "PAPERLESS_URL": "https://your-paperless-instance",
         "PAPERLESS_API_KEY": "your-api-token",
-        "PAPERLESS_PUBLIC_URL": "https://your-public-domain.com"
+        "PAPERLESS_PUBLIC_URL": "https://your-public-domain"
       }
     }
   }
@@ -154,14 +173,16 @@ Parameters: `file` (base64-encoded contents), `filename`, plus optional `title`,
 
 ### stdio (default)
 
-The default mode. The server communicates over stdio — suitable for direct integration with MCP clients like Claude Desktop / Claude Code / Cursor.
+The default mode. The server communicates over stdio — that's what every MCP client config in the Quick Start uses. You usually never run this manually; the MCP client launches it for you.
+
+If you do want to run it directly (e.g. for debugging):
 
 ```bash
-# via env vars (recommended for MCP client configs)
-PAPERLESS_URL=http://localhost:8000 PAPERLESS_API_KEY=xxx node build/index.js
+# via env vars (recommended)
+PAPERLESS_URL=http://localhost:8000 PAPERLESS_API_KEY=xxx npx -y paperless-ngx-mcp
 
 # or via CLI flags
-node build/index.js --baseUrl http://localhost:8000 --token xxx
+npx -y paperless-ngx-mcp --baseUrl http://localhost:8000 --token xxx
 ```
 
 ### HTTP (Streamable HTTP transport)
@@ -169,7 +190,7 @@ node build/index.js --baseUrl http://localhost:8000 --token xxx
 Use the `--http` flag to expose the server over HTTP. `--port` defaults to `3000`.
 
 ```bash
-node build/index.js --baseUrl http://localhost:8000 --token xxx --http --port 3000
+npx -y paperless-ngx-mcp --baseUrl http://localhost:8000 --token xxx --http --port 3000
 ```
 
 - The MCP API is available at `POST /mcp` on the chosen port.
@@ -186,7 +207,11 @@ Tool calls return clear errors when:
 
 ## Development
 
+You only need this section if you're modifying the server itself. End users should follow the [Quick Start](#quick-start) instead — there's no need to clone or build.
+
 ```bash
+git clone https://github.com/cubinet-code/paperless-ngx-mcp.git
+cd paperless-ngx-mcp
 npm install        # install dependencies
 npm run start      # run the server with tsx (no build step)
 npm run build      # compile TypeScript to build/
