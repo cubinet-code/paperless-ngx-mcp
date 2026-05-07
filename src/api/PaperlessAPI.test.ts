@@ -1,6 +1,7 @@
 import { test, describe, before, after } from "node:test";
 import assert from "node:assert/strict";
 import { createServer, type Server, type Socket } from "node:net";
+import { createServer as createHttpServer, type Server as HttpServer, type IncomingMessage, type ServerResponse } from "node:http";
 import { Agent as HttpAgent } from "node:http";
 import { Agent as HttpsAgent } from "node:https";
 import { PaperlessAPI, client } from "./PaperlessAPI";
@@ -98,6 +99,39 @@ describe("PaperlessAPI", () => {
       } finally {
         client.defaults.timeout = originalTimeout;
       }
+    });
+  });
+
+  describe("Accept header (regression for stale API version pin)", () => {
+    let httpServer: HttpServer;
+    let port: number;
+    let lastRequest: IncomingMessage | null = null;
+
+    before(async () => {
+      httpServer = createHttpServer((req: IncomingMessage, res: ServerResponse) => {
+        lastRequest = req;
+        res.writeHead(200, { "Content-Type": "application/json" });
+        res.end("{}");
+      });
+      await new Promise<void>((resolve) =>
+        httpServer.listen(0, "127.0.0.1", resolve)
+      );
+      port = (httpServer.address() as { port: number }).port;
+    });
+
+    after(async () => {
+      await new Promise<void>((resolve) => httpServer.close(() => resolve()));
+    });
+
+    test("does not pin a stale API version (allows server's default)", async () => {
+      const api = new PaperlessAPI(`http://127.0.0.1:${port}`, "test-token");
+      await api.request("/test/");
+
+      const accept = lastRequest?.headers["accept"] ?? "";
+      assert.ok(
+        !/version=5\b/.test(accept),
+        `Accept header still pins API version=5: ${accept}`
+      );
     });
   });
 });

@@ -7,7 +7,7 @@ import { PaperlessAPI } from "../api/PaperlessAPI";
 import { BulkEditParameters, Document } from "../api/types";
 import { Annotations } from "./utils/annotations";
 import { CUSTOM_FIELD_VALUE_DESCRIPTION } from "./utils/descriptions";
-import { arrayNotEmpty, objectNotEmpty } from "./utils/empty";
+import { arrayNotEmpty } from "./utils/empty";
 import { withErrorHandling } from "./utils/middlewares";
 import { validateCustomFields } from "./utils/monetary";
 import {
@@ -36,7 +36,7 @@ function getContentDispositionHeader(headers: unknown): string | null {
 export function registerDocumentTools(server: McpServer, api: PaperlessAPI) {
   server.tool(
     "edit_documents_bulk",
-    "Apply ONE of a fixed set of operations to MANY documents at once. Methods: set_correspondent, set_document_type, set_storage_path, add_tag, remove_tag, modify_tags, modify_custom_fields, set_permissions, delete, reprocess, merge, split, rotate, delete_pages. For per-document field edits including title, content, created (date), archive_serial_number, or owner, use update_document instead — those fields are not editable here. Note: 'remove_tag' only removes the tag from the specified documents (tag stays in the system); 'delete_tag' permanently deletes the tag from the entire system. ⚠️ WARNING: method 'delete' permanently deletes documents and requires confirm=true.",
+    "Apply ONE of a fixed set of operations to MANY documents at once. Methods: set_correspondent, set_document_type, set_storage_path, add_tag, remove_tag, modify_tags, modify_custom_fields, set_permissions, delete, reprocess, merge, split, rotate, delete_pages, edit_pdf. For per-document field edits including title, content, created (date), archive_serial_number, or owner, use update_document instead — those fields are not editable here. Note: 'remove_tag' only removes the tag from the specified documents (tag stays in the system); 'delete_tag' permanently deletes the tag from the entire system. ⚠️ WARNING: method 'delete' permanently deletes documents and requires confirm=true.",
     {
       documents: z.array(z.number()),
       method: z.enum([
@@ -54,6 +54,7 @@ export function registerDocumentTools(server: McpServer, api: PaperlessAPI) {
         "split",
         "rotate",
         "delete_pages",
+        "edit_pdf",
       ]),
       correspondent: z.number().optional(),
       document_type: z.number().optional(),
@@ -65,13 +66,15 @@ export function registerDocumentTools(server: McpServer, api: PaperlessAPI) {
         .array(
           z.object({
             field: z.number(),
-            value: z.union([
-              z.string(),
-              z.number(),
-              z.boolean(),
-              z.array(z.number()),
-              z.null(),
-            ]).describe(CUSTOM_FIELD_VALUE_DESCRIPTION),
+            value: z
+              .union([
+                z.string(),
+                z.number(),
+                z.boolean(),
+                z.array(z.number()),
+                z.null(),
+              ])
+              .describe(CUSTOM_FIELD_VALUE_DESCRIPTION),
           })
         )
         .optional()
@@ -80,25 +83,52 @@ export function registerDocumentTools(server: McpServer, api: PaperlessAPI) {
         .array(z.number())
         .optional()
         .transform(arrayNotEmpty),
-      permissions: z
+      set_permissions: z
         .object({
-          owner: z.number().nullable().optional(),
-          set_permissions: z
-            .object({
-              view: z.object({
-                users: z.array(z.number()),
-                groups: z.array(z.number()),
-              }),
-              change: z.object({
-                users: z.array(z.number()),
-                groups: z.array(z.number()),
-              }),
-            })
-            .optional(),
-          merge: z.boolean().optional(),
+          view: z.object({
+            users: z.array(z.number()),
+            groups: z.array(z.number()),
+          }),
+          change: z.object({
+            users: z.array(z.number()),
+            groups: z.array(z.number()),
+          }),
         })
         .optional()
-        .transform(objectNotEmpty),
+        .describe(
+          "Permission grants for set_permissions method. view/change each take user and group ID lists."
+        ),
+      owner: z
+        .number()
+        .nullable()
+        .optional()
+        .describe("Owner user ID for set_permissions method (null clears the owner)."),
+      merge: z
+        .boolean()
+        .optional()
+        .describe(
+          "When true with set_permissions, merges with existing permissions instead of replacing."
+        ),
+      operations: z
+        .array(
+          z.object({
+            page: z.number(),
+            rotate: z.number().optional(),
+            doc: z.number().optional(),
+          })
+        )
+        .optional()
+        .describe(
+          "Per-page operations for edit_pdf method. Each entry: {page, rotate?, doc?}."
+        ),
+      update_document: z
+        .boolean()
+        .optional()
+        .describe("edit_pdf: replace the document in place (default false)."),
+      include_metadata: z
+        .boolean()
+        .optional()
+        .describe("edit_pdf: copy metadata to the new document (default true)."),
       metadata_document_id: z.number().optional(),
       delete_originals: z.boolean().optional(),
       pages: z.string().optional(),
@@ -113,16 +143,21 @@ export function registerDocumentTools(server: McpServer, api: PaperlessAPI) {
     Annotations.BULK_EDIT,
     withErrorHandling(async (args) => {
       if (args.method === "delete") requireConfirm(args.confirm);
-      const { documents, method, add_custom_fields, confirm, ...parameters } = args;
+      const { documents, method, add_custom_fields, confirm, ...rest } = args;
 
       validateCustomFields(add_custom_fields);
 
-      const apiParameters: BulkEditParameters = { ...parameters };
+      const apiParameters: BulkEditParameters = { ...rest };
       if (add_custom_fields && add_custom_fields.length > 0) {
-        apiParameters.assign_custom_fields = add_custom_fields.map(
-          (cf) => cf.field
+        // Upstream BulkEditSerializer expects {field_id: value} dict on the wire.
+        apiParameters.add_custom_fields = Object.fromEntries(
+          add_custom_fields.map((cf) => [String(cf.field), cf.value])
         );
-        apiParameters.assign_custom_fields_values = add_custom_fields;
+      }
+      if (method === "modify_custom_fields") {
+        // Upstream requires BOTH keys present even when only one side is used.
+        apiParameters.add_custom_fields ??= [];
+        apiParameters.remove_custom_fields ??= [];
       }
 
       const response = await api.bulkEditDocuments(

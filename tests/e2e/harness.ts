@@ -1,4 +1,5 @@
 import { CallToolResult } from "@modelcontextprotocol/sdk/types.js";
+import { z } from "zod";
 import { PaperlessAPI } from "../../src/api/PaperlessAPI";
 import { registerCorrespondentTools } from "../../src/tools/correspondents";
 import { registerCustomFieldTools } from "../../src/tools/customFields";
@@ -57,7 +58,10 @@ export function createHarness(baseUrl: string, token: string): E2EHarness {
     async callTool<T>(name: string, args: Record<string, unknown> = {}): Promise<T> {
       const tool = tools.get(name);
       if (!tool) throw new Error(`Tool not registered: ${name}`);
-      const result = await tool.callback(args);
+      // Apply the tool's Zod schema like the real MCP SDK does, so e2e tests
+      // exercise the full input pipeline (schema validation + body + API).
+      const validated = z.object(tool.schema as z.ZodRawShape).parse(args);
+      const result = await tool.callback(validated as Record<string, unknown>);
       const textItem = result.content.find((c) => c.type === "text");
       if (!textItem || !("text" in textItem)) {
         throw new Error(`Tool ${name} returned no text content`);

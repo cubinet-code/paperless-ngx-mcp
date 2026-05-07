@@ -44,11 +44,6 @@ export interface CustomFieldInstance {
   value: string | number | boolean | object | null;
 }
 
-export interface CustomFieldInstanceRequest {
-  field: number;
-  value: string | number | boolean | object | null;
-}
-
 export interface PaginationResponse<T> {
   count: number;
   next: string | null;
@@ -185,26 +180,44 @@ export interface BulkEditDocumentsResult {
   result: string;
 }
 
+export interface BulkEditPdfOperation {
+  page: number;
+  rotate?: number;
+  doc?: number;
+}
+
 export interface BulkEditParameters {
-  assign_custom_fields?: number[];
-  assign_custom_fields_values?: CustomFieldInstanceRequest[];
+  // modify_custom_fields — wire shape per upstream BulkEditSerializer:
+  // dict {field_id: value} OR list [field_id, ...] for assignments.
+  add_custom_fields?: Record<string, unknown> | number[];
   remove_custom_fields?: number[];
+
+  // tag operations
   add_tags?: number[];
   remove_tags?: number[];
+  tag?: number;
+
+  // assignment operations
+  correspondent?: number;
+  document_type?: number;
+  storage_path?: number;
+
+  // page-mutation operations
   degrees?: number;
   pages?: string;
   metadata_document_id?: number;
   delete_originals?: boolean;
-  correspondent?: number;
-  document_type?: number;
-  storage_path?: number;
-  tag?: number;
-  permissions?: {
-    owner?: number | null;
-    set_permissions?: {
-      view: { users: number[]; groups: number[] };
-      change: { users: number[]; groups: number[] };
-    };
-    merge?: boolean;
+
+  // set_permissions — siblings at parameters root, not nested.
+  set_permissions?: {
+    view: { users: number[]; groups: number[] };
+    change: { users: number[]; groups: number[] };
   };
+  owner?: number | null;
+  merge?: boolean;
+
+  // edit_pdf
+  operations?: BulkEditPdfOperation[];
+  update_document?: boolean;
+  include_metadata?: boolean;
 }

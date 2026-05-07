@@ -150,8 +150,8 @@ Perform bulk operations on multiple documents.
 
 Parameters:
 - `documents`: array of document IDs
-- `method`: one of `set_correspondent`, `set_document_type`, `set_storage_path`, `add_tag`, `remove_tag`, `modify_tags`, `modify_custom_fields`, `delete`, `reprocess`, `set_permissions`, `merge`, `split`, `rotate`, `delete_pages`
-- Method-specific parameters: `correspondent`, `document_type`, `storage_path`, `tag`, `add_tags`, `remove_tags`, `add_custom_fields`, `remove_custom_fields`, `permissions`, `metadata_document_id`, `delete_originals`, `pages`, `degrees`
+- `method`: one of `set_correspondent`, `set_document_type`, `set_storage_path`, `add_tag`, `remove_tag`, `modify_tags`, `modify_custom_fields`, `delete`, `reprocess`, `set_permissions`, `merge`, `split`, `rotate`, `delete_pages`, `edit_pdf`
+- Method-specific parameters: `correspondent`, `document_type`, `storage_path`, `tag`, `add_tags`, `remove_tags`, `add_custom_fields`, `remove_custom_fields`, `set_permissions`, `owner`, `merge`, `metadata_document_id`, `delete_originals`, `pages`, `degrees`, `operations`, `update_document`, `include_metadata`
 
 ```typescript
 // Add a tag to multiple documents
