@@ -95,7 +95,7 @@ export function registerDocumentTypeTools(
 
   server.tool(
     "update_document_type",
-    "Update fields on ONE document type (PATCH — only fields you supply are changed). Editable fields: name, match (matching pattern), matching_algorithm, is_insensitive. To assign this document type to documents, use bulk_edit_documents with method 'set_document_type' or update_document instead.",
+    "Update fields on ONE document type (PATCH — only fields you supply are changed). Editable fields: name, match (matching pattern), matching_algorithm, is_insensitive. To assign this document type to documents, use edit_documents_bulk with method 'set_document_type' or update_document instead.",
     {
       id: z.number(),
       name: z.string().optional(),
@@ -131,9 +131,9 @@ export function registerDocumentTypeTools(
   );
 
   registerBulkEditTool(server, api, {
-    toolName: "bulk_edit_document_types",
+    toolName: "edit_document_types_bulk",
     description:
-      "Manage document type objects themselves (permissions, delete). ⚠️ This does NOT assign document types to documents — use bulk_edit_documents with method 'set_document_type' for that. WARNING: 'delete' permanently removes document types from the entire system.",
+      "Manage document type objects themselves (permissions, delete). ⚠️ This does NOT assign document types to documents — use edit_documents_bulk with method 'set_document_type' for that. WARNING: 'delete' permanently removes document types from the entire system.",
     idsField: "document_type_ids",
     objectType: "document_types",
   });

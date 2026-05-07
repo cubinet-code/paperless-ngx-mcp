@@ -96,7 +96,7 @@ export function registerCorrespondentTools(
 
   server.tool(
     "update_correspondent",
-    "Update fields on ONE correspondent (PATCH — only fields you supply are changed). Editable fields: name, match (matching pattern), matching_algorithm, is_insensitive. To assign this correspondent to documents, use bulk_edit_documents with method 'set_correspondent' or update_document instead.",
+    "Update fields on ONE correspondent (PATCH — only fields you supply are changed). Editable fields: name, match (matching pattern), matching_algorithm, is_insensitive. To assign this correspondent to documents, use edit_documents_bulk with method 'set_correspondent' or update_document instead.",
     {
       id: z.number(),
       name: z.string().optional(),
@@ -134,9 +134,9 @@ export function registerCorrespondentTools(
   );
 
   registerBulkEditTool(server, api, {
-    toolName: "bulk_edit_correspondents",
+    toolName: "edit_correspondents_bulk",
     description:
-      "Manage correspondent objects themselves (permissions, delete). ⚠️ This does NOT assign correspondents to documents — use bulk_edit_documents with method 'set_correspondent' for that. WARNING: 'delete' permanently removes correspondents from the entire system.",
+      "Manage correspondent objects themselves (permissions, delete). ⚠️ This does NOT assign correspondents to documents — use edit_documents_bulk with method 'set_correspondent' for that. WARNING: 'delete' permanently removes correspondents from the entire system.",
     idsField: "correspondent_ids",
     objectType: "correspondents",
   });

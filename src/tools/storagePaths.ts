@@ -82,7 +82,7 @@ export function registerStoragePathTools(
 
   server.tool(
     "update_storage_path",
-    "Update fields on ONE storage path (PATCH — only fields you supply are changed). Editable fields: name, path (path template), match (matching pattern), matching_algorithm, is_insensitive. To assign this storage path to documents, use bulk_edit_documents with method 'set_storage_path' or update_document instead.",
+    "Update fields on ONE storage path (PATCH — only fields you supply are changed). Editable fields: name, path (path template), match (matching pattern), matching_algorithm, is_insensitive. To assign this storage path to documents, use edit_documents_bulk with method 'set_storage_path' or update_document instead.",
     {
       id: z.number(),
       name: z.string().optional(),

@@ -59,7 +59,7 @@ Paperless-NGX MCP Server Instructions
 
 ⚠️ CRITICAL: Always differentiate between operations on specific documents vs operations on the entire system:
 
-- REMOVE operations (e.g., remove_tag in bulk_edit_documents): Affect only the specified documents, items remain in the system
+- REMOVE operations (e.g., remove_tag in edit_documents_bulk): Affect only the specified documents, items remain in the system
 - DELETE operations (e.g., delete_tag, delete_correspondent): Permanently delete items from the entire system, affecting ALL documents that use them
 
 When a user asks to "remove" something, prefer operations that affect specific documents. Only use DELETE operations when explicitly asked to delete from the system.
@@ -76,7 +76,7 @@ Quick tool-selection guide:
 | Want to… | Use |
 |---|---|
 | Edit fields (title, date, content, tags) on ONE document | update_document |
-| Apply the same change to MANY documents at once | bulk_edit_documents |
+| Apply the same change to MANY documents at once | edit_documents_bulk |
 | Add a comment/annotation to a document | create_document_note |
 | Rename a tag/correspondent/document_type, or change its matching rules | update_tag / update_correspondent / update_document_type |
 | Permanently delete a tag/correspondent/document_type system-wide | delete_tag / delete_correspondent / delete_document_type (destructive) |

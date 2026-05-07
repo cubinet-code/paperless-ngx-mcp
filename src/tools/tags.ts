@@ -101,7 +101,7 @@ export function registerTagTools(server: McpServer, api: PaperlessAPI) {
 
   server.tool(
     "update_tag",
-    "Update fields on ONE tag (PATCH — only fields you supply are changed). Editable fields: name, color, match (matching pattern), matching_algorithm, is_insensitive, parent (parent tag ID for hierarchy). To add or remove this tag on documents, use bulk_edit_documents with method 'add_tag' / 'remove_tag' / 'modify_tags' instead.",
+    "Update fields on ONE tag (PATCH — only fields you supply are changed). Editable fields: name, color, match (matching pattern), matching_algorithm, is_insensitive, parent (parent tag ID for hierarchy). To add or remove this tag on documents, use edit_documents_bulk with method 'add_tag' / 'remove_tag' / 'modify_tags' instead.",
     {
       id: z.number(),
       name: z.string().optional(),
@@ -147,9 +147,9 @@ export function registerTagTools(server: McpServer, api: PaperlessAPI) {
   );
 
   registerBulkEditTool(server, api, {
-    toolName: "bulk_edit_tags",
+    toolName: "edit_tags_bulk",
     description:
-      "Manage tag objects themselves (permissions, delete). ⚠️ This does NOT add/remove tags on documents — use bulk_edit_documents with method 'add_tag'/'remove_tag'/'modify_tags' for that. WARNING: 'delete' permanently removes tags from the entire system.",
+      "Manage tag objects themselves (permissions, delete). ⚠️ This does NOT add/remove tags on documents — use edit_documents_bulk with method 'add_tag'/'remove_tag'/'modify_tags' for that. WARNING: 'delete' permanently removes tags from the entire system.",
     idsField: "tag_ids",
     objectType: "tags",
   });

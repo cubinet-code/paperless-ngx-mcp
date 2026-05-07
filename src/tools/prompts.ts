@@ -57,7 +57,7 @@ Then STOP. Do not call any write tools yet.
 After the user confirms (e.g. "apply", "yes, go ahead", or a modified instruction):
 
 1. Create any approved new correspondents / document types / tags first (\`create_correspondent\`, \`create_document_type\`, \`create_tag\`).
-2. Group document changes by operation and use \`bulk_edit_documents\` where possible:
+2. Group document changes by operation and use \`edit_documents_bulk\` where possible:
    - \`set_correspondent\` for batches sharing the same correspondent
    - \`set_document_type\` for batches sharing the same type
    - \`add_tag\` / \`remove_tag\` (including removing the inbox tag) per tag

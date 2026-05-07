@@ -267,7 +267,7 @@ export function registerSystemTools(server: McpServer, api: PaperlessAPI) {
   );
 
   server.tool(
-    "bulk_download",
+    "download_documents_bulk",
     "Download multiple documents as a ZIP archive. Returns base64-encoded ZIP file.",
     {
       documents: z.array(z.number()).min(1).max(500).describe("Array of document IDs to download (max 500)"),

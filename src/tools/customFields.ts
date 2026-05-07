@@ -73,7 +73,7 @@ export function registerCustomFieldTools(server: McpServer, api: PaperlessAPI) {
 
   server.tool(
     "update_custom_field",
-    "Update fields on ONE custom field definition (PATCH — only fields you supply are changed). Editable fields: name, data_type, extra_data. ⚠️ Changing data_type on a field that already has values on documents may render those values invalid or unreadable — change data_type only on unused fields. To set a custom-field VALUE on a document, use update_document or bulk_edit_documents with method 'modify_custom_fields' instead.",
+    "Update fields on ONE custom field definition (PATCH — only fields you supply are changed). Editable fields: name, data_type, extra_data. ⚠️ Changing data_type on a field that already has values on documents may render those values invalid or unreadable — change data_type only on unused fields. To set a custom-field VALUE on a document, use update_document or edit_documents_bulk with method 'modify_custom_fields' instead.",
     {
       id: z.number(),
       name: z.string().optional(),
@@ -118,8 +118,8 @@ export function registerCustomFieldTools(server: McpServer, api: PaperlessAPI) {
   );
 
   server.tool(
-    "bulk_edit_custom_fields",
-    "Manage custom field definitions themselves (permissions, delete). ⚠️ This does NOT modify custom field values on documents — use bulk_edit_documents with method 'modify_custom_fields' for that. WARNING: 'delete' permanently removes custom fields from the entire system.",
+    "edit_custom_fields_bulk",
+    "Manage custom field definitions themselves (permissions, delete). ⚠️ This does NOT modify custom field values on documents — use edit_documents_bulk with method 'modify_custom_fields' for that. WARNING: 'delete' permanently removes custom fields from the entire system.",
     {
       custom_fields: z.array(z.number()),
       operation: z.enum(["delete"]),

@@ -85,19 +85,19 @@ Things you can ask Claude (or any MCP-aware assistant):
 The server registers tools across ten domains.
 
 ### Documents
-`list_documents`, `get_document`, `get_document_content`, `search_documents`, `download_document`, `get_document_thumbnail`, `get_document_preview`, `get_document_history`, `get_document_metadata`, `update_document`, `post_document`, `email_document`, `bulk_edit_documents`, `delete_document`, `bulk_download`, `search_autocomplete`, `get_document_suggestions`, `get_next_asn`
+`list_documents`, `get_document`, `get_document_content`, `search_documents`, `download_document`, `download_documents_bulk`, `get_document_thumbnail`, `get_document_preview`, `get_document_history`, `get_document_metadata`, `update_document`, `post_document`, `email_document`, `edit_documents_bulk`, `delete_document`, `search_autocomplete`, `get_document_suggestions`, `get_next_asn`
 
 ### Tags
-`list_tags`, `get_tag`, `create_tag`, `update_tag`, `delete_tag`, `bulk_edit_tags`
+`list_tags`, `get_tag`, `create_tag`, `update_tag`, `delete_tag`, `edit_tags_bulk`
 
 ### Correspondents
-`list_correspondents`, `get_correspondent`, `create_correspondent`, `update_correspondent`, `delete_correspondent`, `bulk_edit_correspondents`
+`list_correspondents`, `get_correspondent`, `create_correspondent`, `update_correspondent`, `delete_correspondent`, `edit_correspondents_bulk`
 
 ### Document Types
-`list_document_types`, `get_document_type`, `create_document_type`, `update_document_type`, `delete_document_type`, `bulk_edit_document_types`
+`list_document_types`, `get_document_type`, `create_document_type`, `update_document_type`, `delete_document_type`, `edit_document_types_bulk`
 
 ### Custom Fields
-`list_custom_fields`, `get_custom_field`, `create_custom_field`, `update_custom_field`, `delete_custom_field`, `bulk_edit_custom_fields`
+`list_custom_fields`, `get_custom_field`, `create_custom_field`, `update_custom_field`, `delete_custom_field`, `edit_custom_fields_bulk`
 
 ### Storage Paths
 `list_storage_paths`, `get_storage_path`, `create_storage_path`, `update_storage_path`, `delete_storage_path`, `test_storage_path`
@@ -114,6 +114,23 @@ The server registers tools across ten domains.
 ### System / Notes / Trash / Tasks
 `get_statistics`, `list_document_notes`, `create_document_note`, `delete_document_note`, `list_trash`, `restore_from_trash`, `empty_trash`, `list_tasks`, `acknowledge_tasks`
 
+### Tool naming convention (for permission allowlists)
+
+Tool names are **verb-first**, so wildcard-based permission rules group cleanly by operation:
+
+| Wildcard | Covers |
+|---|---|
+| `mcp__paperless__list_*` | All list/index reads |
+| `mcp__paperless__get_*` | All single-item reads |
+| `mcp__paperless__search_*` | Full-text search and autocomplete |
+| `mcp__paperless__download_*` | `download_document` and `download_documents_bulk` |
+| `mcp__paperless__create_*` | All create endpoints |
+| `mcp__paperless__update_*` | Per-item PATCH updates |
+| `mcp__paperless__edit_*_bulk` | All bulk-edit operations across entity types |
+| `mcp__paperless__delete_*` | ⚠️ Destructive — system-wide deletes |
+
+A read-only allowlist is therefore: `list_*`, `get_*`, `search_*`, `download_*`. Write access without destructive operations: add `create_*`, `update_*`, `edit_*_bulk`, `post_document`, `email_document`. `delete_*` and `empty_trash` should require explicit user approval.
+
 ## Prompts
 
 The server also registers MCP **prompts** — reusable, parameterized instructions that surface as slash commands in clients like Claude Code (e.g. `/mcp__paperless__triage_inbox`).
@@ -127,7 +144,7 @@ Argument:
 
 ### Notable tool details
 
-#### `bulk_edit_documents`
+#### `edit_documents_bulk`
 
 Perform bulk operations on multiple documents.
 
@@ -138,10 +155,10 @@ Parameters:
 
 ```typescript
 // Add a tag to multiple documents
-bulk_edit_documents({ documents: [1, 2, 3], method: "add_tag", tag: 5 })
+edit_documents_bulk({ documents: [1, 2, 3], method: "add_tag", tag: 5 })
 
 // Merge documents
-bulk_edit_documents({
+edit_documents_bulk({
   documents: [6, 7, 8],
   method: "merge",
   metadata_document_id: 6,
@@ -149,10 +166,10 @@ bulk_edit_documents({
 })
 
 // Split a document into parts
-bulk_edit_documents({ documents: [9], method: "split", pages: "[1-2,3-4,5]" })
+edit_documents_bulk({ documents: [9], method: "split", pages: "[1-2,3-4,5]" })
 
 // Modify multiple tags at once
-bulk_edit_documents({
+edit_documents_bulk({
   documents: [10, 11],
   method: "modify_tags",
   add_tags: [1, 2],

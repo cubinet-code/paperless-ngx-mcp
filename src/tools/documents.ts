@@ -35,7 +35,7 @@ function getContentDispositionHeader(headers: unknown): string | null {
 
 export function registerDocumentTools(server: McpServer, api: PaperlessAPI) {
   server.tool(
-    "bulk_edit_documents",
+    "edit_documents_bulk",
     "Apply ONE of a fixed set of operations to MANY documents at once. Methods: set_correspondent, set_document_type, set_storage_path, add_tag, remove_tag, modify_tags, modify_custom_fields, set_permissions, delete, reprocess, merge, split, rotate, delete_pages. For per-document field edits including title, content, created (date), archive_serial_number, or owner, use update_document instead — those fields are not editable here. Note: 'remove_tag' only removes the tag from the specified documents (tag stays in the system); 'delete_tag' permanently deletes the tag from the entire system. ⚠️ WARNING: method 'delete' permanently deletes documents and requires confirm=true.",
     {
       documents: z.array(z.number()),
@@ -334,7 +334,7 @@ export function registerDocumentTools(server: McpServer, api: PaperlessAPI) {
 
   server.tool(
     "update_document",
-    "Update fields on ONE document (PATCH — only fields you supply are changed). Editable fields: title, correspondent, document_type, storage_path, tags (replaces the array), content (raw searchable text), created (document date, YYYY-MM-DD), archive_serial_number, owner, custom_fields. For applying the same change to MANY documents, see bulk_edit_documents. To add a comment/annotation rather than change a field, see create_document_note.",
+    "Update fields on ONE document (PATCH — only fields you supply are changed). Editable fields: title, correspondent, document_type, storage_path, tags (replaces the array), content (raw searchable text), created (document date, YYYY-MM-DD), archive_serial_number, owner, custom_fields. For applying the same change to MANY documents, see edit_documents_bulk. To add a comment/annotation rather than change a field, see create_document_note.",
     {
       id: z.number().describe("The ID of the document to update"),
       title: z
