@@ -2,6 +2,16 @@
 
 All notable changes to this project are documented here. Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/); versioning follows [SemVer](https://semver.org/spec/v2.0.0.html).
 
+## [0.1.5] — 2026-05-07
+
+### Security
+
+- Bumped transitive dependency `ip-address` to 10.2.0 (via `express-rate-limit` 8.5.1) to clear [GHSA-v2v4-37r5-5v8g](https://github.com/advisories/GHSA-v2v4-37r5-5v8g) — XSS in `Address6` HTML-emitting methods. The vulnerable methods were not reachable from this codebase, so no functional change; `npm audit` is now clean.
+
+### Changed
+
+- Release workflow now extracts release notes from the matching `## [<version>]` section of `CHANGELOG.md` and fails the release if that section is missing. Previous setup derived notes from PR titles, leaving release pages empty when work landed directly on `main` (as on v0.1.4).
+
 ## [0.1.4] — 2026-05-07
 
 > **Highlights:** This release fixes two long-standing bugs in `edit_documents_bulk` (formerly `bulk_edit_documents`) where `modify_custom_fields` always returned HTTP 400 and `set_permissions` always returned HTTP 500. It also renames every bulk operation to a verb-first naming scheme so that wildcard permission allowlists group cleanly by operation, drops a stale `Accept: …version=5` header pin, and adds the upstream `edit_pdf` bulk method. New schema-driven e2e tests now run against a live Paperless 2.20.15 container and will fail when upstream changes its API.
