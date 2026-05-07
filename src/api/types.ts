@@ -192,31 +192,27 @@ export interface BulkEditParameters {
   add_custom_fields?: Record<string, unknown> | number[];
   remove_custom_fields?: number[];
 
-  // tag operations
   add_tags?: number[];
   remove_tags?: number[];
   tag?: number;
 
-  // assignment operations
   correspondent?: number;
   document_type?: number;
   storage_path?: number;
 
-  // page-mutation operations
   degrees?: number;
   pages?: string;
   metadata_document_id?: number;
   delete_originals?: boolean;
 
-  // set_permissions — siblings at parameters root, not nested.
+  // set_permissions, owner, merge are siblings at parameters root, not nested.
   set_permissions?: {
-    view: { users: number[]; groups: number[] };
-    change: { users: number[]; groups: number[] };
+    view: { users?: number[]; groups?: number[] };
+    change: { users?: number[]; groups?: number[] };
   };
   owner?: number | null;
   merge?: boolean;
 
-  // edit_pdf
   operations?: BulkEditPdfOperation[];
   update_document?: boolean;
   include_metadata?: boolean;

@@ -231,6 +231,7 @@ interface SchemaDoc {
 
 describe("schema coverage (e2e) — every API endpoint is wrapped or explicitly skipped", () => {
   let schema: SchemaDoc;
+  let live: Set<string>;
 
   before(async () => {
     const res = await axios.get<SchemaDoc>(`${BASE_URL}/api/schema/`, {
@@ -239,17 +240,16 @@ describe("schema coverage (e2e) — every API endpoint is wrapped or explicitly 
       timeout: 10_000,
     });
     schema = res.data;
-  });
-
-  test("every (path, method) in the schema is in WRAPPED or SKIPPED", () => {
-    const live = new Set<string>();
+    live = new Set<string>();
     for (const [path, methods] of Object.entries(schema.paths)) {
       for (const method of Object.keys(methods)) {
         if (method === "parameters") continue;
         live.add(`${method.toUpperCase()} ${path}`);
       }
     }
+  });
 
+  test("every (path, method) in the schema is in WRAPPED or SKIPPED", () => {
     const unknown = [...live]
       .filter((entry) => !WRAPPED.has(entry) && !(entry in SKIPPED))
       .sort();
@@ -262,14 +262,6 @@ describe("schema coverage (e2e) — every API endpoint is wrapped or explicitly 
   });
 
   test("every entry in WRAPPED exists in the live schema (no dead allowlist entries)", () => {
-    const live = new Set<string>();
-    for (const [path, methods] of Object.entries(schema.paths)) {
-      for (const method of Object.keys(methods)) {
-        if (method === "parameters") continue;
-        live.add(`${method.toUpperCase()} ${path}`);
-      }
-    }
-
     const removed = [...WRAPPED].filter((entry) => !live.has(entry)).sort();
 
     assert.deepEqual(
@@ -280,14 +272,6 @@ describe("schema coverage (e2e) — every API endpoint is wrapped or explicitly 
   });
 
   test("every entry in SKIPPED exists in the live schema (no dead allowlist entries)", () => {
-    const live = new Set<string>();
-    for (const [path, methods] of Object.entries(schema.paths)) {
-      for (const method of Object.keys(methods)) {
-        if (method === "parameters") continue;
-        live.add(`${method.toUpperCase()} ${path}`);
-      }
-    }
-
     const removed = Object.keys(SKIPPED)
       .filter((entry) => !live.has(entry))
       .sort();

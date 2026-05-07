@@ -15,7 +15,7 @@ import {
   requireConfirm,
 } from "./utils/responses";
 import { buildQueryString } from "./utils/queryString";
-import { paginationFields } from "./utils/schemas";
+import { paginationFields, permissionsSchema } from "./utils/schemas";
 
 const BASE64_REGEX = /^[A-Za-z0-9+/]+={0,2}$/;
 
@@ -83,21 +83,9 @@ export function registerDocumentTools(server: McpServer, api: PaperlessAPI) {
         .array(z.number())
         .optional()
         .transform(arrayNotEmpty),
-      set_permissions: z
-        .object({
-          view: z.object({
-            users: z.array(z.number()),
-            groups: z.array(z.number()),
-          }),
-          change: z.object({
-            users: z.array(z.number()),
-            groups: z.array(z.number()),
-          }),
-        })
-        .optional()
-        .describe(
-          "Permission grants for set_permissions method. view/change each take user and group ID lists."
-        ),
+      set_permissions: permissionsSchema.describe(
+        "Permission grants for set_permissions method. view/change each take user and group ID lists."
+      ),
       owner: z
         .number()
         .nullable()

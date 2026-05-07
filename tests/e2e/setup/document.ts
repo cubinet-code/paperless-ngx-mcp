@@ -1,5 +1,6 @@
 import axios from "axios";
 import { Buffer } from "node:buffer";
+import { PaperlessAPI } from "../../../src/api/PaperlessAPI";
 
 const BASE_URL = process.env.PAPERLESS_E2E_URL ?? "http://localhost:8001";
 
@@ -68,41 +69,20 @@ async function pollForTask(
   throw new Error(`Timed out waiting for consumer task ${taskUuid}`);
 }
 
-/**
- * Uploads a minimal 1-page PDF with a unique title and waits for the consumer
- * to finish processing it. Returns the resulting document id.
- */
 export async function seedDocument(
   token: string,
   titlePrefix = "e2e-doc"
 ): Promise<SeededDocument> {
   const title = `${titlePrefix}-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+  const api = new PaperlessAPI(BASE_URL, token);
 
-  const FormData = (await import("form-data")).default;
-  const form = new FormData();
-  form.append("document", buildMinimalPdf(title), {
-    filename: `${title}.pdf`,
-    contentType: "application/pdf",
+  const response = await api.postDocument(buildMinimalPdf(title), `${title}.pdf`, {
+    title,
   });
-  form.append("title", title);
-
-  const res = await axios.post<string>(
-    `${BASE_URL}/api/documents/post_document/`,
-    form,
-    {
-      headers: {
-        Authorization: `Token ${token}`,
-        ...form.getHeaders(),
-      },
-      timeout: 30_000,
-    }
-  );
-
-  const taskUuid =
-    typeof res.data === "string" ? res.data.replace(/"/g, "").trim() : "";
+  const taskUuid = response.replace(/"/g, "").trim();
   if (!taskUuid) {
     throw new Error(
-      `post_document did not return a task UUID; got ${JSON.stringify(res.data)}`
+      `post_document did not return a task UUID; got ${JSON.stringify(response)}`
     );
   }
   const id = await pollForTask(taskUuid, token);

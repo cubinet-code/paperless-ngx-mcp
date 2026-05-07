@@ -14,7 +14,6 @@ import { registerWorkflowTools } from "../../src/tools/workflows";
 
 interface RegisteredTool {
   name: string;
-  description: string;
   schema: unknown;
   callback: (args: Record<string, unknown>, extra?: unknown) => Promise<CallToolResult>;
 }
@@ -32,13 +31,13 @@ export function createHarness(baseUrl: string, token: string): E2EHarness {
   const server: any = {
     tool(
       name: string,
-      description: string,
+      _description: string,
       schema: unknown,
       annotationsOrCallback: unknown,
       maybeCallback?: unknown
     ) {
       const callback = (maybeCallback ?? annotationsOrCallback) as RegisteredTool["callback"];
-      tools.set(name, { name, description, schema, callback });
+      tools.set(name, { name, schema, callback });
     },
   };
 

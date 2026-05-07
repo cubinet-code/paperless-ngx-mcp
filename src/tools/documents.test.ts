@@ -2,7 +2,7 @@ import { test, describe } from "node:test";
 import assert from "node:assert/strict";
 import { z } from "zod";
 import { registerDocumentTools } from "./documents";
-import { createMockServer, createMockApi, getTextContent } from "./test-helpers";
+import { createMockServer, createMockApi } from "./test-helpers";
 
 function getZodSchemaShape(toolSchema: unknown): z.ZodObject<z.ZodRawShape> {
   return z.object(toolSchema as z.ZodRawShape);
@@ -28,7 +28,6 @@ function bulkEditCapture(): {
       calls.push({ documents, method, parameters });
       return { result: "OK" };
     },
-    convertDocumentsResponse: async (response: unknown) => response,
   });
   return { calls, api };
 }
