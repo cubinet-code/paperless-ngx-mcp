@@ -14,3 +14,6 @@ build/
 
 # OS
 .DS_Store
+
+# Local Claude Code project guidance (per-developer, not committed)
+CLAUDE.md
