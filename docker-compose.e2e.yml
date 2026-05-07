@@ -23,7 +23,11 @@ services:
       PAPERLESS_OCR_LANGUAGES: eng
       PAPERLESS_DBENGINE: sqlite
     healthcheck:
-      test: ["CMD", "curl", "-fsSL", "-H", "Accept: application/json", "http://localhost:8000/api/"]
+      # GET /api/ returns 302 to /api/schema/view/ (Swagger UI, HTML-only) since
+      # Paperless 2.16; with -L curl follows the redirect and gets 406 because
+      # we ask for JSON. Hit /api/schema/?format=json directly — that's a real
+      # "API serves requests" check and stays valid across versions.
+      test: ["CMD", "curl", "-fsS", "http://localhost:8000/api/schema/?format=json"]
       interval: 5s
       timeout: 5s
       retries: 60
