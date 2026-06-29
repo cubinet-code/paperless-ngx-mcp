@@ -2,6 +2,16 @@
 
 All notable changes to this project are documented here. Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/); versioning follows [SemVer](https://semver.org/spec/v2.0.0.html).
 
+## [0.1.6] — 2026-06-29
+
+### Added
+
+- **`post_document` can now wait for the consumer.** New optional `poll` flag: when `true`, the tool waits for the Paperless consumer task to finish and returns the final result in a single call — the new `document_id` on success, or the consumer error (e.g. `InputFileError`) on failure — instead of just a task UUID you have to chase via `list_tasks`. New optional `poll_timeout_seconds` (default 30, max 300) caps the wait and returns the in-progress status on timeout; raise it for large scans where OCR is slow. Default behaviour is unchanged — without `poll`, the tool still returns the task UUID immediately.
+
+### Fixed
+
+- **`post_document` no longer misleads callers about the `file` path option on remote deployments.** The `file` parameter description now makes clear that base64 content is the universal method (the bytes travel over the wire) and that the absolute-path option only works when the MCP server runs on the same machine as the file (local/stdio deployments). When a path can't be read (e.g. a remote server can't see the caller's filesystem), the bare `ENOENT` is replaced with a message that explains why and tells the caller to pass base64 instead — so an AI client can self-correct instead of dead-ending.
+
 ## [0.1.5] — 2026-05-07
 
 ### Security

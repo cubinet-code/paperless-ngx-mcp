@@ -181,7 +181,11 @@ edit_documents_bulk({
 
 Upload a new document.
 
-Parameters: `file` (base64-encoded contents), `filename`, plus optional `title`, `created`, `correspondent`, `document_type`, `storage_path`, `tags`, `archive_serial_number`, `custom_fields`.
+Parameters: `file`, `filename`, plus optional `title`, `created`, `correspondent`, `document_type`, `storage_path`, `tags`, `archive_serial_number`, `custom_fields`, `poll`, `poll_timeout_seconds`.
+
+`file` accepts **base64-encoded contents** (the universal method — works for any deployment, since the bytes travel over the wire) or an **absolute file path** that the server reads from its own filesystem. The path option only works when the MCP server runs on the same machine as the file (local/stdio deployments); for a remote server, use base64.
+
+Upload is asynchronous. By default the tool returns a task UUID (track it with `list_tasks`). Set `poll: true` to wait for the consumer to finish and get the result in one call — the new `document_id` on success, or the consumer error on failure. `poll_timeout_seconds` (default 30, max 300) caps the wait; raise it for large scans where OCR is slow.
 
 #### Matching algorithms
 

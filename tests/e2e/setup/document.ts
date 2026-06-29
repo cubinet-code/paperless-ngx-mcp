@@ -10,7 +10,7 @@ const BASE_URL = process.env.PAPERLESS_E2E_URL ?? "http://localhost:8001";
  * duplicates by hash). Computing the xref offsets at runtime avoids the
  * hand-counted-byte breakage that hardcoded fixtures hit.
  */
-function buildMinimalPdf(uniqueTag: string): Buffer {
+export function buildMinimalPdf(uniqueTag: string): Buffer {
   const safeTag = uniqueTag.replace(/[()\\]/g, "_");
   const stream = `BT /F1 24 Tf 72 720 Td (${safeTag}) Tj ET`;
   const objects = [

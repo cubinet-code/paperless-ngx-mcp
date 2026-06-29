@@ -1,8 +1,12 @@
 import { test, describe } from "node:test";
 import assert from "node:assert/strict";
 import { z } from "zod";
-import { registerDocumentTools } from "./documents";
-import { createMockServer, createMockApi } from "./test-helpers";
+import { registerDocumentTools, pollConsumeTask } from "./documents";
+import {
+  createMockServer,
+  createMockApi,
+  getTextContent,
+} from "./test-helpers";
 
 function getZodSchemaShape(toolSchema: unknown): z.ZodObject<z.ZodRawShape> {
   return z.object(toolSchema as z.ZodRawShape);
@@ -153,5 +157,171 @@ describe("edit_documents_bulk — edit_pdf", () => {
     assert.deepEqual(calls[0].parameters.operations, [{ page: 1, rotate: 90 }]);
     assert.equal(calls[0].parameters.update_document, true);
     assert.equal(calls[0].parameters.include_metadata, false);
+  });
+});
+
+describe("post_document — file input", () => {
+  test("unreadable absolute path surfaces guidance to pass base64 instead, without calling the API", async () => {
+    let postCalled = false;
+    const api = createMockApi({
+      postDocument: async () => {
+        postCalled = true;
+        return "1";
+      },
+    });
+    const { server, tools } = createMockServer();
+    registerDocumentTools(server, api);
+
+    // Simulates a remotely-hosted server: the path exists in the caller's
+    // sandbox but not on the server's filesystem -> readFile throws ENOENT.
+    const missingPath = "/mnt/user-data/outputs/does-not-exist-on-server.pdf";
+
+    await assert.rejects(
+      tools.get("post_document")!.callback({
+        file: missingPath,
+        filename: "does-not-exist-on-server.pdf",
+      }),
+      (err: Error) => {
+        assert.match(
+          err.message,
+          /base64/i,
+          "error should steer the caller toward base64 content"
+        );
+        assert.match(
+          err.message,
+          /does-not-exist-on-server\.pdf/,
+          "error should echo the path that failed to read"
+        );
+        return true;
+      }
+    );
+
+    assert.equal(
+      postCalled,
+      false,
+      "must not attempt the upload when the file could not be read"
+    );
+  });
+
+  test("file field description scopes the path option to same-machine deployments", () => {
+    const api = createMockApi();
+    const { server, tools } = createMockServer();
+    registerDocumentTools(server, api);
+
+    const shape = tools.get("post_document")!.schema as Record<
+      string,
+      z.ZodTypeAny
+    >;
+    const fileDescription = shape.file.description ?? "";
+
+    assert.match(
+      fileDescription,
+      /base64/i,
+      "should present base64 as a/the primary input"
+    );
+    assert.match(
+      fileDescription,
+      /same machine|same-machine|locally|local/i,
+      "should disclose that the path option only works when the server shares a filesystem"
+    );
+  });
+});
+
+describe("post_document — poll", () => {
+  const base64 = Buffer.from("hello").toString("base64");
+
+  test("poll:true returns the new document_id when the consumer task succeeds", async () => {
+    const polled: string[] = [];
+    const api = createMockApi({
+      postDocument: async () => "the-task-uuid",
+      request: async (pathAndQuery: string) => {
+        polled.push(pathAndQuery);
+        return [
+          {
+            task_id: "the-task-uuid",
+            status: "SUCCESS",
+            related_document: 42,
+            result: "Success. New document id 42 created.",
+          },
+        ];
+      },
+    });
+    const { server, tools } = createMockServer();
+    registerDocumentTools(server, api);
+
+    const result = await tools.get("post_document")!.callback({
+      file: base64,
+      filename: "x.pdf",
+      poll: true,
+    });
+    const body = getTextContent(result) as Record<string, unknown>;
+
+    assert.equal(body.status, "SUCCESS");
+    assert.equal(body.document_id, 42);
+    assert.equal(body.task_id, "the-task-uuid");
+    assert.ok(
+      polled.some((p) => p.includes("task_id=the-task-uuid")),
+      "should poll /tasks/ filtered by the returned task_id"
+    );
+  });
+
+  test("poll:true surfaces the consumer error when the task fails", async () => {
+    const api = createMockApi({
+      postDocument: async () => "fail-uuid",
+      request: async () => [
+        {
+          task_id: "fail-uuid",
+          status: "FAILURE",
+          result: "InputFileError: the file is not a valid PDF",
+        },
+      ],
+    });
+    const { server, tools } = createMockServer();
+    registerDocumentTools(server, api);
+
+    const result = await tools.get("post_document")!.callback({
+      file: base64,
+      filename: "x.pdf",
+      poll: true,
+    });
+    const body = getTextContent(result) as Record<string, unknown>;
+
+    assert.equal(body.status, "FAILURE");
+    assert.match(String(body.result), /InputFileError/);
+  });
+
+  test("without poll, returns the task UUID immediately and never queries tasks", async () => {
+    let requested = false;
+    const api = createMockApi({
+      postDocument: async () => "async-uuid",
+      request: async () => {
+        requested = true;
+        return [];
+      },
+    });
+    const { server, tools } = createMockServer();
+    registerDocumentTools(server, api);
+
+    const result = await tools.get("post_document")!.callback({
+      file: base64,
+      filename: "x.pdf",
+    });
+    const body = getTextContent(result) as Record<string, unknown>;
+
+    assert.equal(body.status, "async-uuid");
+    assert.equal(requested, false, "must not poll when poll is not requested");
+  });
+});
+
+describe("pollConsumeTask", () => {
+  test("returns the last non-terminal task once the timeout elapses (never hangs)", async () => {
+    const api = createMockApi({
+      request: async () => [{ task_id: "slow", status: "STARTED" }],
+    });
+
+    // timeoutMs 0 -> exactly one poll, deadline check returns before any sleep.
+    const task = await pollConsumeTask(api, "slow", 0);
+
+    assert.equal(task?.status, "STARTED");
   });
 });

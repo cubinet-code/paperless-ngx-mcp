@@ -33,6 +33,47 @@ function getContentDispositionHeader(headers: unknown): string | null {
   return h["content-disposition"] ?? null;
 }
 
+const TERMINAL_TASK_STATES = new Set(["SUCCESS", "FAILURE", "REVOKED"]);
+const POLL_INTERVAL_MS = 1500;
+
+export interface ConsumeTask {
+  task_id: string;
+  status: string;
+  result?: unknown;
+  related_document?: number | string | null;
+  [key: string]: unknown;
+}
+
+/**
+ * Polls `/tasks/?task_id=<uuid>` until the consumer task reaches a terminal
+ * state (SUCCESS / FAILURE / REVOKED) or `timeoutMs` elapses. Returns the
+ * matching task, or the last-seen still-running task (or null) if it never
+ * finished in time. The deadline is checked before sleeping, so `timeoutMs=0`
+ * polls exactly once and returns immediately without waiting.
+ */
+export async function pollConsumeTask(
+  api: PaperlessAPI,
+  taskUuid: string,
+  timeoutMs: number
+): Promise<ConsumeTask | null> {
+  const deadline = Date.now() + timeoutMs;
+  for (;;) {
+    const tasks = await api.request<ConsumeTask[]>(
+      `/tasks/?task_id=${encodeURIComponent(taskUuid)}`
+    );
+    const task = Array.isArray(tasks)
+      ? tasks.find((t) => t.task_id === taskUuid)
+      : undefined;
+    if (task && TERMINAL_TASK_STATES.has(task.status)) {
+      return task;
+    }
+    if (Date.now() >= deadline) {
+      return task ?? null;
+    }
+    await new Promise((resolve) => setTimeout(resolve, POLL_INTERVAL_MS));
+  }
+}
+
 export function registerDocumentTools(server: McpServer, api: PaperlessAPI) {
   server.tool(
     "edit_documents_bulk",
@@ -166,9 +207,9 @@ export function registerDocumentTools(server: McpServer, api: PaperlessAPI) {
 
   server.tool(
     "post_document",
-    "Upload a new document file (PDF, image, etc.) to Paperless-NGX with optional metadata. Upload is asynchronous: typically returns a task UUID (use list_tasks to track consumer progress) — the actual document ID is assigned only after the consumer has processed the file. Optional metadata: title, created (date), correspondent, document_type, storage_path, tags, archive_serial_number, custom_fields.",
+    "Upload a new document file (PDF, image, etc.) to Paperless-NGX with optional metadata. Upload is asynchronous: by default returns a task UUID (use list_tasks to track consumer progress) — the actual document ID is assigned only after the consumer has processed the file. Set poll=true to wait for the consumer to finish and return the final result (the new document_id on success, or the consumer error on failure) in a single call. Optional metadata: title, created (date), correspondent, document_type, storage_path, tags, archive_serial_number, custom_fields.",
     {
-      file: z.string().describe("Base64-encoded file content, or an absolute file path (e.g. /tmp/invoice.pdf) which the server will read directly"),
+      file: z.string().describe("Base64-encoded file content (the universal method — works for any deployment, since the bytes travel over the wire). Alternatively, an absolute file path (e.g. /tmp/invoice.pdf) that the server reads from its OWN filesystem — this only works when the server runs on the same machine as the file (local/stdio deployments). For a remote server, the path option will fail; use base64 instead."),
       filename: z.string().describe("Original filename including extension (e.g. 'invoice.pdf')"),
       title: z.string().optional(),
       created: z.string().optional(),
@@ -178,13 +219,37 @@ export function registerDocumentTools(server: McpServer, api: PaperlessAPI) {
       tags: z.array(z.number()).optional(),
       archive_serial_number: z.number().optional(),
       custom_fields: z.array(z.number()).optional(),
+      poll: z
+        .boolean()
+        .optional()
+        .describe(
+          "If true, wait for the consumer to finish and return the final task status, the new document_id (on success), or the consumer error (on failure) — instead of just the task UUID. Default false (returns immediately)."
+        ),
+      poll_timeout_seconds: z
+        .number()
+        .int()
+        .min(1)
+        .max(300)
+        .optional()
+        .describe(
+          "When poll=true, max seconds to wait before returning the still-in-progress status (default 30). Increase for large scans where OCR is slow."
+        ),
     },
     Annotations.CREATE,
     withErrorHandling(async (args) => {
-      const { file, filename, ...metadata } = args;
+      const { file, filename, poll, poll_timeout_seconds, ...metadata } = args;
       let document: Buffer;
       if (path.isAbsolute(file)) {
-        document = await fs.readFile(file);
+        try {
+          document = await fs.readFile(file);
+        } catch (err) {
+          const reason = err instanceof Error ? err.message : String(err);
+          throw new Error(
+            `Could not read '${file}' from the server's filesystem (${reason}). ` +
+              "The absolute-path option only works when this MCP server runs on the same machine as the file. " +
+              "If the server is remote, pass the file as base64-encoded content instead."
+          );
+        }
       } else {
         if (!isLikelyBase64(file)) {
           throw new Error(
@@ -198,18 +263,48 @@ export function registerDocumentTools(server: McpServer, api: PaperlessAPI) {
         Object.entries(metadata).filter(([, v]) => v !== undefined)
       );
       const response = await api.postDocument(document, filename, cleanedMetadata);
-      const result =
-        typeof response === "string" && /^\d+$/.test(response)
-          ? { id: Number(response) }
-          : { status: response };
-      return {
-        content: [
-          {
-            type: "text",
-            text: JSON.stringify(result),
-          },
-        ],
-      };
+      const jsonResult = (obj: unknown) => ({
+        content: [{ type: "text" as const, text: JSON.stringify(obj) }],
+      });
+
+      // A purely-numeric response is a document id (sync path); nothing to poll.
+      const taskUuid =
+        typeof response === "string" ? response.replace(/"/g, "").trim() : "";
+      if (/^\d+$/.test(taskUuid)) {
+        return jsonResult({ id: Number(taskUuid) });
+      }
+      if (!poll || !taskUuid) {
+        return jsonResult({ status: response });
+      }
+
+      const timeoutMs = (poll_timeout_seconds ?? 30) * 1000;
+      const task = await pollConsumeTask(api, taskUuid, timeoutMs);
+
+      if (!task || !TERMINAL_TASK_STATES.has(task.status)) {
+        return jsonResult({
+          task_id: taskUuid,
+          status: task?.status ?? "PENDING",
+          timed_out: true,
+          message: `Consumer did not finish within ${timeoutMs / 1000}s. Use list_tasks with this task_id to keep tracking.`,
+        });
+      }
+      if (task.status === "SUCCESS") {
+        return jsonResult({
+          task_id: taskUuid,
+          status: "SUCCESS",
+          document_id:
+            task.related_document != null
+              ? Number(task.related_document)
+              : undefined,
+          result: task.result,
+        });
+      }
+      // FAILURE / REVOKED
+      return jsonResult({
+        task_id: taskUuid,
+        status: task.status,
+        result: task.result,
+      });
     })
   );
 
