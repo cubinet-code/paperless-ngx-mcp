@@ -225,8 +225,9 @@ Use the `--http` flag to expose the server over HTTP. `--port` defaults to `3000
 npx -y paperless-ngx-mcp --baseUrl http://localhost:8000 --token xxx --http --port 3000
 ```
 
-- The MCP API is available at `POST /mcp` on the chosen port.
-- Each request is handled statelessly via [`StreamableHTTPServerTransport`](https://github.com/modelcontextprotocol/typescript-sdk).
+- The MCP API is available at `POST /mcp` on the chosen port, backed by [`StreamableHTTPServerTransport`](https://github.com/modelcontextprotocol/typescript-sdk) in **stateful** mode.
+- The first request (an `initialize` call) creates a session and returns an `Mcp-Session-Id` header; subsequent requests must send that header back to reuse the same session. Transports are kept in an in-memory `Map`, so this only works for single-instance deployments.
+- `GET /mcp` streams server-initiated messages for a session; `DELETE /mcp` terminates it and evicts it from the map. Both require a valid `Mcp-Session-Id` header.
 - A legacy `GET /sse` + `POST /messages` SSE transport is also exposed for clients that don't yet support the streamable transport.
 
 ## Error Handling
