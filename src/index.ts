@@ -3,7 +3,9 @@ import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { SSEServerTransport } from "@modelcontextprotocol/sdk/server/sse.js";
 import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js";
 import { StreamableHTTPServerTransport } from "@modelcontextprotocol/sdk/server/streamableHttp.js";
+import { isInitializeRequest } from "@modelcontextprotocol/sdk/types.js";
 import express from "express";
+import { randomUUID } from "node:crypto";
 import { parseArgs } from "node:util";
 import { PaperlessAPI } from "./api/PaperlessAPI";
 import { registerCorrespondentTools } from "./tools/correspondents";
@@ -103,16 +105,58 @@ Quick tool-selection guide:
 
     // Store transports for each session
     const sseTransports: Record<string, SSEServerTransport> = {};
+    const streamableTransports: Record<string, StreamableHTTPServerTransport> =
+      {};
 
     app.post("/mcp", async (req, res) => {
       try {
-        const transport = new StreamableHTTPServerTransport({
-          sessionIdGenerator: undefined,
-        });
-        res.on("close", () => {
-          transport.close();
-        });
-        await server.connect(transport);
+        const sessionId = req.headers["mcp-session-id"] as string | undefined;
+        let transport = sessionId ? streamableTransports[sessionId] : undefined;
+
+        if (!transport) {
+          if (sessionId) {
+            res.status(404).json({
+              jsonrpc: "2.0",
+              error: {
+                code: -32001,
+                message: "Session not found",
+              },
+              id: null,
+            });
+            return;
+          }
+
+          if (!isInitializeRequest(req.body)) {
+            res.status(400).json({
+              jsonrpc: "2.0",
+              error: {
+                code: -32000,
+                message: "Bad Request: No valid session ID provided",
+              },
+              id: null,
+            });
+            return;
+          }
+
+          transport = new StreamableHTTPServerTransport({
+            sessionIdGenerator: () => randomUUID(),
+            onsessioninitialized: (initializedSessionId) => {
+              streamableTransports[initializedSessionId] = transport!;
+            },
+            onsessionclosed: (closedSessionId) => {
+              delete streamableTransports[closedSessionId];
+            },
+          });
+
+          transport.onclose = () => {
+            if (transport!.sessionId) {
+              delete streamableTransports[transport!.sessionId];
+            }
+          };
+
+          await server.connect(transport);
+        }
+
         await transport.handleRequest(req, res, req.body);
       } catch (error) {
         console.error("Error handling MCP request:", error);
@@ -129,19 +173,41 @@ Quick tool-selection guide:
       }
     });
 
-    const methodNotAllowed = (_req: express.Request, res: express.Response) => {
-      res.writeHead(405).end(
-        JSON.stringify({
+    const handleSessionRequest = async (
+      req: express.Request,
+      res: express.Response
+    ) => {
+      const sessionId = req.headers["mcp-session-id"] as string | undefined;
+      const transport = sessionId ? streamableTransports[sessionId] : undefined;
+      if (!transport) {
+        res.status(404).json({
           jsonrpc: "2.0",
           error: {
-            code: -32000,
-            message: "Method not allowed.",
+            code: -32001,
+            message: "Session not found",
           },
           id: null,
-        })
-      );
+        });
+        return;
+      }
+      try {
+        await transport.handleRequest(req, res);
+      } catch (error) {
+        console.error("Error handling MCP session request:", error);
+        if (!res.headersSent) {
+          res.status(500).json({
+            jsonrpc: "2.0",
+            error: {
+              code: -32603,
+              message: "Internal server error",
+            },
+            id: null,
+          });
+        }
+      }
     };
-    app.route("/mcp").get(methodNotAllowed).delete(methodNotAllowed);
+
+    app.route("/mcp").get(handleSessionRequest).delete(handleSessionRequest);
 
     app.get("/sse", async (req, res) => {
       // SSE connection established
@@ -180,7 +246,7 @@ Quick tool-selection guide:
 
     app.listen(resolvedPort, () => {
       console.log(
-        `MCP Stateless Streamable HTTP Server listening on port ${resolvedPort}`
+        `MCP Streamable HTTP Server listening on port ${resolvedPort}`
       );
     });
   } else {
