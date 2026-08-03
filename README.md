@@ -5,6 +5,12 @@
 
 A [Model Context Protocol](https://modelcontextprotocol.io/) server for [Paperless-NGX](https://docs.paperless-ngx.com/). Exposes the full Paperless-NGX REST API to AI assistants — documents, tags, correspondents, document types, custom fields, storage paths, saved views, share links, workflows, notes, trash, and tasks.
 
+## Compatibility
+
+Works with **Paperless-ngx 2.x and 3.x**. Where the two differ on the wire the server adapts automatically, so the same tools work against either.
+
+The package major version tracks the Paperless-ngx major it targets, which is why it goes from `0.1.6` straight to `3.0.0` — there are no `1.x` or `2.x` releases. Paperless-ngx 3.0 reworked the task API; if you are on 3.x, use `3.0.0` or later.
+
 ## Quick Start
 
 The server is published to npm as [`paperless-ngx-mcp`](https://www.npmjs.com/package/paperless-ngx-mcp). You can run it with `npx` — no clone or build required.
