@@ -324,4 +324,22 @@ describe("pollConsumeTask", () => {
 
     assert.equal(task?.status, "STARTED");
   });
+
+  test("finds the task in the paginated /tasks/ envelope returned by Paperless 3.x", async () => {
+    const api = createMockApi({
+      // Paperless 3.0 paginates /tasks/; 2.x returned a bare array. Before this
+      // was handled, the task was never found and polling always timed out.
+      request: async () => ({
+        count: 1,
+        next: null,
+        previous: null,
+        results: [{ task_id: "done", status: "SUCCESS", related_document: 42 }],
+      }),
+    });
+
+    const task = await pollConsumeTask(api, "done", 0);
+
+    assert.equal(task?.status, "SUCCESS");
+    assert.equal(task?.related_document, 42);
+  });
 });

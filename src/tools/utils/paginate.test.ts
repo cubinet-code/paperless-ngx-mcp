@@ -1,6 +1,6 @@
 import { test, describe } from "node:test";
 import assert from "node:assert/strict";
-import { fetchAllPages } from "./paginate";
+import { fetchAllPages, toItemArray } from "./paginate";
 
 describe("fetchAllPages", () => {
   test("returns all results across multiple pages until next is null", async () => {
@@ -66,5 +66,27 @@ describe("fetchAllPages", () => {
     const all = await fetchAllPages(fetcher);
     assert.equal(calls, 1);
     assert.equal(all.length, 2);
+  });
+});
+
+describe("toItemArray", () => {
+  test("passes through a flat array (Paperless 2.x)", () => {
+    assert.deepEqual(toItemArray([{ id: 1 }, { id: 2 }]), [{ id: 1 }, { id: 2 }]);
+  });
+
+  test("unwraps results from a paginated envelope (Paperless 3.x)", () => {
+    const paginated = {
+      count: 2,
+      next: null,
+      previous: null,
+      results: [{ id: 1 }, { id: 2 }],
+    };
+    assert.deepEqual(toItemArray(paginated), [{ id: 1 }, { id: 2 }]);
+  });
+
+  test("returns an empty array for null, undefined, or a malformed envelope", () => {
+    assert.deepEqual(toItemArray(undefined), []);
+    assert.deepEqual(toItemArray(null), []);
+    assert.deepEqual(toItemArray({} as never), []);
   });
 });

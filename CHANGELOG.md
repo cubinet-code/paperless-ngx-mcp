@@ -2,6 +2,31 @@
 
 All notable changes to this project are documented here. Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/); versioning follows [SemVer](https://semver.org/spec/v2.0.0.html).
 
+## [3.0.0] — 2026-08-03
+
+Adds support for **Paperless-ngx 3.x**, which reworked the task API. Paperless 2.x remains supported — the tools detect and adapt to either server.
+
+The version jumps from `0.1.6` to `3.0.0` so the major tracks the Paperless-ngx major it targets. There are no `1.x` or `2.x` releases of this package.
+
+### Fixed
+
+- **`list_tasks` failed outright against Paperless 3.x.** 3.0 paginates `/api/tasks/` (`{count, next, previous, results}`); 2.x returned a bare array. The tool sliced the response directly and died with `response.slice is not a function`. Both shapes are now accepted and the tool still returns a plain array.
+- **`post_document` with `poll: true` never completed against Paperless 3.x.** Two independent causes, both silent — the upload succeeded but the tool always reported a timeout with no `document_id`:
+  - the consumer poll read `/api/tasks/?task_id=…` as an array, so it never found its task on 3.x;
+  - terminal-state detection compared against uppercase `SUCCESS`/`FAILURE`/`REVOKED`, but 3.x reports lowercase `success`/`failure`/`revoked`. Status comparison is now case-insensitive.
+- **`post_document` returned no `document_id` on Paperless 3.x** even when the consumer succeeded: 3.x replaced the task's `related_document` with a `related_document_ids` array. Both are now read.
+
+### Added
+
+- **`list_tasks` gained the Paperless 3.x filters `task_type` and `trigger_source`.** The 2.x `task_name` and `type` filters are kept for older servers. Each server silently ignores the filters it does not know, so the correct pair applies automatically; the tool descriptions say which version each belongs to.
+- `task_type` covers the task kinds 3.x added: `mail_fetch`, `llm_index`, `empty_trash`, `check_workflows`, `bulk_update`, `reprocess_document`, `build_share_link`, `bulk_delete`. Note that 2.x's `check_sanity` is `sanity_check` in 3.x.
+
+### Changed (BREAKING)
+
+- **`list_tasks` `status` values are now lowercase** (`success`, not `SUCCESS`), matching the 3.x vocabulary. Paperless 2.x requires uppercase and rejects lowercase with a 400, so the tool retries with the other casing and remembers which the server accepted — callers pass lowercase either way.
+- **`list_tasks` no longer accepts `status: "RETRY"` or `"RECEIVED"`.** Paperless 3.x removed both from the task status enum.
+- **`post_document` reports the server's own status casing** in its result (`success` on 3.x, `SUCCESS` on 2.x) rather than always uppercasing it.
+
 ## [0.1.6] — 2026-06-29
 
 ### Added

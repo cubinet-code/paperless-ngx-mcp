@@ -10,6 +10,13 @@ import { CUSTOM_FIELD_VALUE_DESCRIPTION } from "./utils/descriptions";
 import { arrayNotEmpty } from "./utils/empty";
 import { withErrorHandling } from "./utils/middlewares";
 import { validateCustomFields } from "./utils/monetary";
+import { PaginatedResponse, toItemArray } from "./utils/paginate";
+import {
+  isTerminalTaskStatus,
+  relatedDocumentId,
+  taskResult,
+  taskStatusIs,
+} from "./utils/tasks";
 import {
   parseFilenameFromContentDisposition,
   requireConfirm,
@@ -33,14 +40,16 @@ function getContentDispositionHeader(headers: unknown): string | null {
   return h["content-disposition"] ?? null;
 }
 
-const TERMINAL_TASK_STATES = new Set(["SUCCESS", "FAILURE", "REVOKED"]);
 const POLL_INTERVAL_MS = 1500;
 
 export interface ConsumeTask {
   task_id: string;
   status: string;
+  // Paperless 2.x shape; 3.x sends `result_data` / `related_document_ids`.
   result?: unknown;
+  result_data?: unknown;
   related_document?: number | string | null;
+  related_document_ids?: (number | string)[] | null;
   [key: string]: unknown;
 }
 
@@ -58,13 +67,11 @@ export async function pollConsumeTask(
 ): Promise<ConsumeTask | null> {
   const deadline = Date.now() + timeoutMs;
   for (;;) {
-    const tasks = await api.request<ConsumeTask[]>(
-      `/tasks/?task_id=${encodeURIComponent(taskUuid)}`
-    );
-    const task = Array.isArray(tasks)
-      ? tasks.find((t) => t.task_id === taskUuid)
-      : undefined;
-    if (task && TERMINAL_TASK_STATES.has(task.status)) {
+    const tasks = await api.request<
+      PaginatedResponse<ConsumeTask> | ConsumeTask[]
+    >(`/tasks/?task_id=${encodeURIComponent(taskUuid)}`);
+    const task = toItemArray(tasks).find((t) => t.task_id === taskUuid);
+    if (task && isTerminalTaskStatus(task.status)) {
       return task;
     }
     if (Date.now() >= deadline) {
@@ -280,7 +287,7 @@ export function registerDocumentTools(server: McpServer, api: PaperlessAPI) {
       const timeoutMs = (poll_timeout_seconds ?? 30) * 1000;
       const task = await pollConsumeTask(api, taskUuid, timeoutMs);
 
-      if (!task || !TERMINAL_TASK_STATES.has(task.status)) {
+      if (!task || !isTerminalTaskStatus(task.status)) {
         return jsonResult({
           task_id: taskUuid,
           status: task?.status ?? "PENDING",
@@ -288,22 +295,19 @@ export function registerDocumentTools(server: McpServer, api: PaperlessAPI) {
           message: `Consumer did not finish within ${timeoutMs / 1000}s. Use list_tasks with this task_id to keep tracking.`,
         });
       }
-      if (task.status === "SUCCESS") {
+      if (taskStatusIs(task.status, "success")) {
         return jsonResult({
           task_id: taskUuid,
-          status: "SUCCESS",
-          document_id:
-            task.related_document != null
-              ? Number(task.related_document)
-              : undefined,
-          result: task.result,
+          status: task.status,
+          document_id: relatedDocumentId(task),
+          result: taskResult(task),
         });
       }
       // FAILURE / REVOKED
       return jsonResult({
         task_id: taskUuid,
         status: task.status,
-        result: task.result,
+        result: taskResult(task),
       });
     })
   );

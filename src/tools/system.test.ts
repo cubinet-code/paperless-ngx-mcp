@@ -140,12 +140,62 @@ describe("list_tasks tool", () => {
     registerSystemTools(server, api);
 
     const tool = tools.get("list_tasks")!;
-    await tool.callback({ status: "SUCCESS", task_name: "consume_file" });
+    await tool.callback({ status: "success", task_name: "consume_file" });
 
-    assert.ok(calledPath!.includes("status=SUCCESS"));
+    assert.ok(calledPath!.includes("status=success"));
     assert.ok(calledPath!.includes("task_name=consume_file"));
     // Should NOT have task_id
     assert.ok(!calledPath!.includes("task_id"));
+  });
+
+  test("falls back to uppercase status when the server rejects lowercase (Paperless 2.x)", async () => {
+    const calledPaths: string[] = [];
+    const { server, tools } = createMockServer();
+    const api = createMockApi({
+      request: async (path: string) => {
+        calledPaths.push(path);
+        // 2.x rejects lowercase statuses with a 400.
+        if (path.includes("status=success")) {
+          throw new Error("Request failed with status code 400 (HTTP 400)");
+        }
+        return [];
+      },
+    });
+    registerSystemTools(server, api);
+
+    const tool = tools.get("list_tasks")!;
+    await tool.callback({ status: "success" });
+
+    assert.equal(calledPaths.length, 2, "should retry once with the other casing");
+    assert.ok(calledPaths[0].includes("status=success"));
+    assert.ok(calledPaths[1].includes("status=SUCCESS"));
+
+    // The accepted casing is remembered, so the next call goes straight there.
+    calledPaths.length = 0;
+    await tool.callback({ status: "failure" });
+    assert.deepEqual(calledPaths.length, 1);
+    assert.ok(calledPaths[0].includes("status=FAILURE"));
+  });
+
+  test("passes through the Paperless 3.x task_type and trigger_source filters", async () => {
+    let calledPath: string | undefined;
+    const { server, tools } = createMockServer();
+    const api = createMockApi({
+      request: async (path: string) => {
+        calledPath = path;
+        return { count: 0, next: null, previous: null, results: [] };
+      },
+    });
+    registerSystemTools(server, api);
+
+    const tool = tools.get("list_tasks")!;
+    await tool.callback({
+      task_type: "consume_file",
+      trigger_source: "api_upload",
+    });
+
+    assert.ok(calledPath!.includes("task_type=consume_file"));
+    assert.ok(calledPath!.includes("trigger_source=api_upload"));
   });
 
   test("works with no filters", async () => {
@@ -186,6 +236,34 @@ describe("list_tasks tool", () => {
     assert.equal(parsed.length, 10);
     assert.equal(parsed[0].id, 1);
     assert.equal(parsed[9].id, 10);
+  });
+
+  test("handles the paginated /tasks/ envelope returned by Paperless 3.x", async () => {
+    const fakeTasks = Array.from({ length: 40 }, (_, i) => ({
+      id: i + 1,
+      task_id: `task-${i + 1}`,
+      task_name: "consume_file",
+      status: "SUCCESS",
+    }));
+    const { server, tools } = createMockServer();
+    const api = createMockApi({
+      // Paperless 3.0 paginates /tasks/; 2.x returned a bare array.
+      request: async (_path: string) => ({
+        count: fakeTasks.length,
+        next: null,
+        previous: null,
+        results: fakeTasks,
+      }),
+    });
+    registerSystemTools(server, api);
+
+    const tool = tools.get("list_tasks")!;
+    const result = await tool.callback({ limit: 5 });
+    const parsed = getTextContent(result) as any[];
+
+    assert.ok(Array.isArray(parsed), "must return an array, not the envelope");
+    assert.equal(parsed.length, 5);
+    assert.equal(parsed[0].task_id, "task-1");
   });
 
   test("defaults to 25 results when no limit specified and array is large", async () => {
