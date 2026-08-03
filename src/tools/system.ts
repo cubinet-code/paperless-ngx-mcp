@@ -5,19 +5,35 @@ import { Annotations } from "./utils/annotations";
 import { arrayNotEmpty } from "./utils/empty";
 import { withErrorHandling } from "./utils/middlewares";
 import { buildQueryString } from "./utils/queryString";
+import { PaginatedResponse, toItemArray } from "./utils/paginate";
 import { deletedResponse, requireConfirm } from "./utils/responses";
 import { paginationFields } from "./utils/schemas";
 
 interface Task {
   id: number;
   task_id: string;
-  task_name: string;
+  // Paperless 2.x sends `task_name`; 3.x renamed it to `task_type`.
+  task_name?: string;
+  task_type?: string;
   status: string;
   date_created?: string;
   [key: string]: unknown;
 }
 
+/**
+ * Paperless 2.x expects uppercase task statuses (`SUCCESS`) and 3.x expects
+ * lowercase (`success`); each rejects the other with a 400. Try one casing,
+ * fall back to the other, and remember which the server accepted.
+ */
+type StatusCasing = "lower" | "upper";
+
+const applyCasing = (status: string, casing: StatusCasing) =>
+  casing === "upper" ? status.toUpperCase() : status.toLowerCase();
+
 export function registerSystemTools(server: McpServer, api: PaperlessAPI) {
+  // Cached per registered server, so it is scoped to one Paperless instance.
+  let acceptedStatusCasing: StatusCasing | undefined;
+
   server.tool(
     "get_statistics",
     "Get system statistics including document counts, inbox status, file type breakdown, and storage information.",
@@ -225,23 +241,45 @@ export function registerSystemTools(server: McpServer, api: PaperlessAPI) {
 
   server.tool(
     "list_tasks",
-    "List background tasks with their status, progress, and results. Useful for monitoring document consumption and other async operations. Note: the API returns a flat array (no pagination), so use filters to limit results.",
+    "List background tasks with their status, progress, and results. Useful for monitoring document consumption and other async operations. Use the filters to narrow the list; `limit` truncates what is returned.",
     {
-      status: z.enum(["PENDING", "STARTED", "SUCCESS", "FAILURE", "RETRY", "REVOKED", "RECEIVED"]).optional().describe("Filter by task state (uppercase)"),
-      task_name: z.enum(["consume_file", "train_classifier", "check_sanity", "index_optimize"]).optional().describe("Filter by task name"),
-      type: z.enum(["auto_task", "scheduled_task", "manual_task"]).optional().describe("Filter by task type"),
+      status: z.enum(["pending", "started", "success", "failure", "revoked"]).optional().describe("Filter by task state. Case is adjusted automatically for the server's Paperless version."),
+      task_type: z.enum(["consume_file", "train_classifier", "sanity_check", "index_optimize", "mail_fetch", "llm_index", "empty_trash", "check_workflows", "bulk_update", "reprocess_document", "build_share_link", "bulk_delete"]).optional().describe("Filter by task type (Paperless 3.x). Ignored by 2.x servers — use task_name there."),
+      trigger_source: z.enum(["scheduled", "web_ui", "api_upload", "folder_consume", "email_consume", "system", "manual"]).optional().describe("Filter by what triggered the task (Paperless 3.x). Ignored by 2.x servers — use type there."),
+      task_name: z.enum(["consume_file", "train_classifier", "check_sanity", "index_optimize"]).optional().describe("Filter by task name (Paperless 2.x). Ignored by 3.x servers — use task_type there."),
+      type: z.enum(["auto_task", "scheduled_task", "manual_task"]).optional().describe("Filter by task origin (Paperless 2.x). Ignored by 3.x servers — use trigger_source there."),
       acknowledged: z.boolean().optional().describe("Filter by acknowledged status (false = unacknowledged tasks only)"),
       ordering: z.string().optional().describe("Field to order by, e.g. '-date_created'"),
-      limit: z.number().int().min(1).optional().describe("Max number of tasks to return (default 25). The API returns all tasks at once, so this truncates client-side."),
+      limit: z.number().int().min(1).optional().describe("Max number of tasks to return (default 25). Truncates the fetched results client-side."),
     },
     Annotations.READ,
     withErrorHandling(async (args) => {
-      const { limit, ...filterArgs } = args;
-      const queryString = buildQueryString(filterArgs);
-      const response = await api.request<Task[]>(
-        `/tasks/${queryString ? `?${queryString}` : ""}`
-      );
-      const tasks = response.slice(0, limit ?? 25);
+      const { limit, status, ...filterArgs } = args;
+      const fetchTasks = (casing: StatusCasing) => {
+        const queryString = buildQueryString({
+          ...filterArgs,
+          ...(status ? { status: applyCasing(status, casing) } : {}),
+        });
+        return api.request<PaginatedResponse<Task> | Task[]>(
+          `/tasks/${queryString ? `?${queryString}` : ""}`
+        );
+      };
+
+      let response;
+      if (!status) {
+        response = await fetchTasks("lower");
+      } else {
+        const first = acceptedStatusCasing ?? "lower";
+        try {
+          response = await fetchTasks(first);
+          acceptedStatusCasing = first;
+        } catch {
+          const fallback: StatusCasing = first === "lower" ? "upper" : "lower";
+          response = await fetchTasks(fallback);
+          acceptedStatusCasing = fallback;
+        }
+      }
+      const tasks = toItemArray(response).slice(0, limit ?? 25);
       return {
         content: [{ type: "text", text: JSON.stringify(tasks) }],
       };
