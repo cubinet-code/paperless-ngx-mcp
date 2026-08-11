@@ -35,13 +35,13 @@ export interface HttpAppOptions {
   sessionIdleTimeoutMs?: number;
   /** How often to look for idle sessions. Defaults to 60 seconds. */
   sweepIntervalMs?: number;
-  /** Reject new sessions past this many live ones. Defaults to 100. */
+  /** Reject new sessions past this many live ones. Defaults to 50. */
   maxSessions?: number;
 }
 
 export interface HttpApp {
   app: express.Express;
-  /** Number of live streamable-HTTP sessions. Exposed for tests. */
+  /** Number of live sessions, streamable-HTTP and SSE combined. Exposed for tests. */
   sessionCount: () => number;
   /** Evict sessions idle past the timeout. Called on a timer; exposed for tests. */
   sweepIdleSessions: () => number;
@@ -75,6 +75,14 @@ export function createHttpApp({
   const sessions = new Map<string, Session>();
   const sseTransports: Record<string, SSEServerTransport> = {};
   const sseServers: Record<string, McpServer> = {};
+
+  /**
+   * `/mcp` sessions and `/sse` connections each pin their own McpServer, so
+   * both draw from the same budget — otherwise the cap on one is just a
+   * detour around it via the other.
+   */
+  const totalSessionCount = () =>
+    sessions.size + Object.keys(sseTransports).length;
 
   const dropSession = (sessionId: string) => {
     const session = sessions.get(sessionId);
@@ -144,8 +152,8 @@ export function createHttpApp({
       }
 
       // Reclaim what we can before refusing work.
-      if (sessions.size >= maxSessions) sweepIdleSessions();
-      if (sessions.size >= maxSessions) {
+      if (totalSessionCount() >= maxSessions) sweepIdleSessions();
+      if (totalSessionCount() >= maxSessions) {
         jsonRpcError(
           res,
           503,
@@ -219,6 +227,18 @@ export function createHttpApp({
 
   app.get("/sse", async (req, res) => {
     try {
+      // Same budget as /mcp: each SSE connection pins its own McpServer too,
+      // and this endpoint has no auth either.
+      if (totalSessionCount() >= maxSessions) sweepIdleSessions();
+      if (totalSessionCount() >= maxSessions) {
+        res
+          .status(503)
+          .send(
+            `Too many active sessions (${maxSessions}). Terminate an existing session and retry.`
+          );
+        return;
+      }
+
       const transport = new SSEServerTransport("/messages", res);
       // Same rule as above: each SSE connection needs its own server.
       const server = createServer(api, publicUrl);
@@ -266,7 +286,7 @@ export function createHttpApp({
 
   return {
     app,
-    sessionCount: () => sessions.size,
+    sessionCount: totalSessionCount,
     sweepIdleSessions,
     shutdown,
   };

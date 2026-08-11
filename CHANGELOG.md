@@ -12,7 +12,7 @@ All notable changes to this project are documented here. Format follows [Keep a 
 
 ### Added
 
-- **Session limits, so an unauthenticated port cannot exhaust memory.** Each session pins a full server (~3.5 MB), so sessions are capped (default 50, `--maxSessions` / `PAPERLESS_MAX_SESSIONS`) and idle sessions are evicted (default 30 minutes, `--sessionIdleMinutes` / `PAPERLESS_SESSION_IDLE_MINUTES`). Past the cap, `initialize` is refused with HTTP 503 rather than allocating. A client that is actively connected — including one holding a `GET /mcp` stream open — is never evicted, however long it sits idle.
+- **Session limits, so an unauthenticated port cannot exhaust memory.** Each session pins a full server (~3.5 MB), so sessions are capped (default 50, `--maxSessions` / `PAPERLESS_MAX_SESSIONS`) and idle sessions are evicted (default 30 minutes, `--sessionIdleMinutes` / `PAPERLESS_SESSION_IDLE_MINUTES`). Past the cap, `initialize` is refused with HTTP 503 rather than allocating. A client that is actively connected — including one holding a `GET /mcp` stream open — is never evicted, however long it sits idle. `/sse` connections draw from the same cap, so it is refused with 503 too once the budget is spent — it was previously unbounded even after `/mcp` was capped.
 - `SIGTERM` / `SIGINT` now tear down live sessions before exit.
 
 ### Changed (BREAKING)
