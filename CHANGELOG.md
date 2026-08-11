@@ -2,6 +2,20 @@
 
 All notable changes to this project are documented here. Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/); versioning follows [SemVer](https://semver.org/spec/v2.0.0.html).
 
+## [3.1.1] — 2026-08-11
+
+### Security
+
+- Cleared 42 Dependabot alerts (9 high, 29 moderate, 4 low) by bumping transitive and direct dependencies within their existing semver ranges — no `--force`, no breaking changes:
+  - `@modelcontextprotocol/sdk` `1.29.0` → `1.30.0`, pulling in patched `hono` (`4.12.17` → `4.13.1`) and `@hono/node-server` (`1.19.14` → `2.1.0`). Most of the `hono` advisories (JSX SSR, CORS, cookie/JWT middleware, Lambda adapters) are in code paths this server never exercises — we use Express for our own HTTP transport — but the patched versions clear them regardless.
+  - `express-rate-limit`'s `ip-address` `10.2.0` → `10.5.0` (SSRF/trust-boundary bypasses via octal/CIDR/IPv6-mapped address confusion).
+  - `axios` `1.16.0` → `1.19.0` (prototype pollution, `maxBodyLength` bypasses, proxy handling).
+  - `form-data` `4.0.5` → `4.0.6` (CRLF injection via unescaped multipart field names).
+  - `ajv`'s `fast-uri` `3.1.0` → `3.1.5` (host confusion / path traversal in URI parsing).
+  - `express`'s `body-parser` `2.2.2` → `2.3.0` and `qs` `6.15.1` → `6.15.3`.
+  - Dev-only: `tsx` `4.21.0` → `4.23.12`, pulling in patched `esbuild` (`0.27.7` → `0.28.2`; arbitrary file read in `esbuild`'s dev server on Windows — not shipped in the published package).
+  - `npm audit` is now clean (0 vulnerabilities). Verified: `tsc --noEmit`, 75/75 unit tests, 15/15 e2e against `paperless-ngx:2.20.15`, including the full HTTP session/SSE suite against the new SDK version.
+
 ## [3.1.0] — 2026-08-11
 
 ### Fixed
