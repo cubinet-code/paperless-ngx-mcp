@@ -2,6 +2,25 @@
 
 All notable changes to this project are documented here. Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/); versioning follows [SemVer](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Fixed
+
+- **The HTTP transport could only serve one client at a time.** `--http` mode shared a single `McpServer` across every connection, but the MCP SDK binds one server to exactly one transport — so a second concurrent client failed with `Already connected to a transport` (HTTP 500). Each session now gets its own server instance. The same latent fault affected the legacy `/sse` endpoint, where a second connection could displace the first; it is fixed there too.
+- **HTTP sessions are now durable.** `POST /mcp` issues an `Mcp-Session-Id` on `initialize` and reuses it on later requests, instead of treating every request as a fresh stateless exchange. Clients that expect session continuity (per the Streamable HTTP spec) no longer see `Session terminated`.
+- **`GET /mcp` and `DELETE /mcp` now work** instead of always returning 405. `GET` opens the server-to-client stream for a session; `DELETE` terminates it.
+
+### Added
+
+- **Session limits, so an unauthenticated port cannot exhaust memory.** Each session pins a full server (~3.5 MB), so sessions are capped (default 50, `--maxSessions` / `PAPERLESS_MAX_SESSIONS`) and idle sessions are evicted (default 30 minutes, `--sessionIdleMinutes` / `PAPERLESS_SESSION_IDLE_MINUTES`). Past the cap, `initialize` is refused with HTTP 503 rather than allocating. A client that is actively connected — including one holding a `GET /mcp` stream open — is never evicted, however long it sits idle. `/sse` connections draw from the same cap, so it is refused with 503 too once the budget is spent — it was previously unbounded even after `/mcp` was capped.
+- `SIGTERM` / `SIGINT` now tear down live sessions before exit.
+
+### Changed (BREAKING)
+
+- **`--http` mode is stateful.** Clients that never call `initialize`, or that call it and then ignore the returned `Mcp-Session-Id`, previously worked against the stateless server and now receive HTTP 400. Send `initialize` first and echo the session id back on subsequent requests. Only `--http` is affected — **stdio behaviour is unchanged**.
+- `GET`/`DELETE` on `/mcp` without a session id return **400** (was 405); with an unknown or expired session id they return **404**.
+- The HTTP startup log line dropped the word `Stateless`.
+
 ## [3.0.0] — 2026-08-03
 
 Adds support for **Paperless-ngx 3.x**, which reworked the task API. Paperless 2.x remains supported — the tools detect and adapt to either server.

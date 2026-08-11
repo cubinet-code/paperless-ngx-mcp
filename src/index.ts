@@ -1,26 +1,20 @@
 #!/usr/bin/env node
-import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
-import { SSEServerTransport } from "@modelcontextprotocol/sdk/server/sse.js";
 import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js";
-import { StreamableHTTPServerTransport } from "@modelcontextprotocol/sdk/server/streamableHttp.js";
-import express from "express";
 import { parseArgs } from "node:util";
 import { PaperlessAPI } from "./api/PaperlessAPI";
-import { registerCorrespondentTools } from "./tools/correspondents";
-import { registerCustomFieldTools } from "./tools/customFields";
-import { registerDocumentTools } from "./tools/documents";
-import { registerDocumentTypeTools } from "./tools/documentTypes";
-import { registerPrompts } from "./tools/prompts";
-import { registerSavedViewTools } from "./tools/savedViews";
-import { registerShareLinkTools } from "./tools/shareLinks";
-import { registerStoragePathTools } from "./tools/storagePaths";
-import { registerSystemTools } from "./tools/system";
-import { registerTagTools } from "./tools/tags";
-import { registerWorkflowTools } from "./tools/workflows";
-import { version } from "../package.json";
+import { createHttpApp } from "./httpApp";
+import { createServer } from "./server";
 
 const {
-  values: { baseUrl, token, http: useHttp, port, publicUrl },
+  values: {
+    baseUrl,
+    token,
+    http: useHttp,
+    port,
+    publicUrl,
+    maxSessions,
+    sessionIdleMinutes,
+  },
 } = parseArgs({
   options: {
     baseUrl: { type: "string" },
@@ -28,6 +22,8 @@ const {
     http: { type: "boolean", default: false },
     port: { type: "string" },
     publicUrl: { type: "string", default: "" },
+    maxSessions: { type: "string" },
+    sessionIdleMinutes: { type: "string" },
   },
   allowPositionals: true,
 });
@@ -37,6 +33,19 @@ const resolvedToken = token || process.env.PAPERLESS_API_KEY;
 const resolvedPublicUrl =
   publicUrl || process.env.PAPERLESS_PUBLIC_URL || resolvedBaseUrl;
 const resolvedPort = port ? parseInt(port, 10) : 3000;
+
+const positiveNumber = (value: string | undefined): number | undefined => {
+  if (value === undefined) return undefined;
+  const parsed = Number(value);
+  return Number.isFinite(parsed) && parsed > 0 ? parsed : undefined;
+};
+
+const resolvedMaxSessions = positiveNumber(
+  maxSessions || process.env.PAPERLESS_MAX_SESSIONS
+);
+const resolvedIdleMinutes = positiveNumber(
+  sessionIdleMinutes || process.env.PAPERLESS_SESSION_IDLE_MINUTES
+);
 
 if (!resolvedBaseUrl || !resolvedToken) {
   console.error(
@@ -49,141 +58,29 @@ if (!resolvedBaseUrl || !resolvedToken) {
 }
 
 async function main() {
-  // Initialize API client and server once
   const api = new PaperlessAPI(resolvedBaseUrl!, resolvedToken!);
-  const server = new McpServer(
-    { name: "paperless-ngx", version },
-    {
-      instructions: `
-Paperless-NGX MCP Server Instructions
-
-⚠️ CRITICAL: Always differentiate between operations on specific documents vs operations on the entire system:
-
-- REMOVE operations (e.g., remove_tag in edit_documents_bulk): Affect only the specified documents, items remain in the system
-- DELETE operations (e.g., delete_tag, delete_correspondent): Permanently delete items from the entire system, affecting ALL documents that use them
-
-When a user asks to "remove" something, prefer operations that affect specific documents. Only use DELETE operations when explicitly asked to delete from the system.
-
-To view documents in your Paperless-NGX web interface, construct URLs using this pattern:
-${resolvedPublicUrl}/documents/{document_id}/
-
-Example: If your base URL is "http://localhost:8000", the web interface URL would be "http://localhost:8000/documents/123/" for document ID 123.
-
-The document tools return JSON data with document IDs that you can use to construct these URLs.
-
-Quick tool-selection guide:
-
-| Want to… | Use |
-|---|---|
-| Edit fields (title, date, content, tags) on ONE document | update_document |
-| Apply the same change to MANY documents at once | edit_documents_bulk |
-| Add a comment/annotation to a document | create_document_note |
-| Rename a tag/correspondent/document_type, or change its matching rules | update_tag / update_correspondent / update_document_type |
-| Permanently delete a tag/correspondent/document_type system-wide | delete_tag / delete_correspondent / delete_document_type (destructive) |
-| Find documents filtered by tag/correspondent/type/date | list_documents (after looking up the relevant ID) |
-| Free-text search inside document content | search_documents |
-      `,
-    }
-  );
-  registerDocumentTools(server, api);
-  registerTagTools(server, api);
-  registerCorrespondentTools(server, api);
-  registerDocumentTypeTools(server, api);
-  registerCustomFieldTools(server, api);
-  registerStoragePathTools(server, api);
-  registerSavedViewTools(server, api);
-  registerShareLinkTools(server, api);
-  registerWorkflowTools(server, api);
-  registerSystemTools(server, api);
-  registerPrompts(server);
 
   if (useHttp) {
-    const app = express();
-    app.use(express.json({ limit: "1mb" }));
-
-    // Store transports for each session
-    const sseTransports: Record<string, SSEServerTransport> = {};
-
-    app.post("/mcp", async (req, res) => {
-      try {
-        const transport = new StreamableHTTPServerTransport({
-          sessionIdGenerator: undefined,
-        });
-        res.on("close", () => {
-          transport.close();
-        });
-        await server.connect(transport);
-        await transport.handleRequest(req, res, req.body);
-      } catch (error) {
-        console.error("Error handling MCP request:", error);
-        if (!res.headersSent) {
-          res.status(500).json({
-            jsonrpc: "2.0",
-            error: {
-              code: -32603,
-              message: "Internal server error",
-            },
-            id: null,
-          });
-        }
-      }
+    const { app, shutdown } = createHttpApp({
+      api,
+      publicUrl: resolvedPublicUrl,
+      maxSessions: resolvedMaxSessions,
+      sessionIdleTimeoutMs: resolvedIdleMinutes
+        ? resolvedIdleMinutes * 60 * 1000
+        : undefined,
     });
-
-    const methodNotAllowed = (_req: express.Request, res: express.Response) => {
-      res.writeHead(405).end(
-        JSON.stringify({
-          jsonrpc: "2.0",
-          error: {
-            code: -32000,
-            message: "Method not allowed.",
-          },
-          id: null,
-        })
-      );
-    };
-    app.route("/mcp").get(methodNotAllowed).delete(methodNotAllowed);
-
-    app.get("/sse", async (req, res) => {
-      // SSE connection established
-      try {
-        const transport = new SSEServerTransport("/messages", res);
-        sseTransports[transport.sessionId] = transport;
-        res.on("close", () => {
-          delete sseTransports[transport.sessionId];
-          transport.close();
-        });
-        await server.connect(transport);
-      } catch (error) {
-        console.error("Error handling SSE request:", error);
-        if (!res.headersSent) {
-          res.status(500).json({
-            jsonrpc: "2.0",
-            error: {
-              code: -32603,
-              message: "Internal server error",
-            },
-            id: null,
-          });
-        }
-      }
-    });
-
-    app.post("/messages", async (req, res) => {
-      const sessionId = req.query.sessionId as string;
-      const transport = sseTransports[sessionId];
-      if (transport) {
-        await transport.handlePostMessage(req, res, req.body);
-      } else {
-        res.status(400).send("No transport found for sessionId");
-      }
-    });
-
+    for (const signal of ["SIGTERM", "SIGINT"] as const) {
+      process.on(signal, () => {
+        void shutdown().finally(() => process.exit(0));
+      });
+    }
     app.listen(resolvedPort, () => {
       console.log(
-        `MCP Stateless Streamable HTTP Server listening on port ${resolvedPort}`
+        `MCP Streamable HTTP Server listening on port ${resolvedPort}`
       );
     });
   } else {
+    const server = createServer(api, resolvedPublicUrl);
     const transport = new StdioServerTransport();
     await server.connect(transport);
   }

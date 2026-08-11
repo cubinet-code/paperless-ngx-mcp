@@ -231,9 +231,23 @@ Use the `--http` flag to expose the server over HTTP. `--port` defaults to `3000
 npx -y paperless-ngx-mcp --baseUrl http://localhost:8000 --token xxx --http --port 3000
 ```
 
-- The MCP API is available at `POST /mcp` on the chosen port.
-- Each request is handled statelessly via [`StreamableHTTPServerTransport`](https://github.com/modelcontextprotocol/typescript-sdk).
+- The MCP API is available at `POST /mcp` on the chosen port, backed by [`StreamableHTTPServerTransport`](https://github.com/modelcontextprotocol/typescript-sdk) in **stateful** mode.
+- The first request (an `initialize` call) creates a session and returns an `Mcp-Session-Id` header; subsequent requests must send that header back to reuse the same session. Transports are kept in an in-memory `Map`, so this only works for single-instance deployments.
+- `GET /mcp` streams server-initiated messages for a session; `DELETE /mcp` terminates it and evicts it from the map. Both require a valid `Mcp-Session-Id` header.
 - A legacy `GET /sse` + `POST /messages` SSE transport is also exposed for clients that don't yet support the streamable transport.
+
+#### Session limits
+
+Every session holds its own MCP server instance (~3.5 MB), and the HTTP port has **no authentication** — so sessions are bounded:
+
+| Flag | Environment variable | Default | Purpose |
+|---|---|---|---|
+| `--maxSessions` | `PAPERLESS_MAX_SESSIONS` | `50` | Concurrent sessions allowed. Past this, `initialize` is refused with HTTP 503. |
+| `--sessionIdleMinutes` | `PAPERLESS_SESSION_IDLE_MINUTES` | `30` | Evict a session after this long with no activity. |
+
+A client that is actively connected — including one holding a `GET /mcp` stream open — is never evicted, no matter how long it stays idle. Only genuinely abandoned sessions are reclaimed.
+
+Because sessions live in memory, `--http` only works for **single-instance** deployments. Do not expose the port to an untrusted network: there is no auth, and it binds all interfaces.
 
 ## Error Handling
 
