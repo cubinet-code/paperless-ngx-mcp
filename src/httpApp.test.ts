@@ -286,4 +286,56 @@ describe("createHttpApp — session pressure", () => {
       await new Promise<void>((resolve) => listener.close(() => resolve()));
     }
   });
+
+  test("/sse draws from the same cap as /mcp and is refused with 503", async () => {
+    // Regression: /sse had no cap at all, so it stayed OOM-able even after
+    // /mcp was bounded.
+    const api = new PaperlessAPI("http://127.0.0.1:1/api", "token");
+    const httpApp = createHttpApp({
+      api,
+      publicUrl: undefined,
+      maxSessions: 2,
+      sessionIdleTimeoutMs: 60_000,
+      sweepIntervalMs: 60_000,
+    });
+    const listener = await new Promise<Server>((resolve) => {
+      const s = httpApp.app.listen(0, () => resolve(s));
+    });
+    const { port } = listener.address() as { port: number };
+    const controllers: AbortController[] = [];
+    const openSse = async () => {
+      const controller = new AbortController();
+      controllers.push(controller);
+      return fetch(`http://127.0.0.1:${port}/sse`, {
+        headers: { Accept: "text/event-stream" },
+        signal: controller.signal,
+      });
+    };
+
+    try {
+      const a = await openSse();
+      const b = await openSse();
+      assert.equal(a.status, 200);
+      assert.equal(b.status, 200);
+      assert.equal(httpApp.sessionCount(), 2);
+
+      const refused = await openSse();
+      assert.equal(refused.status, 503);
+      assert.match(await refused.text(), /Too many active sessions/);
+      assert.equal(
+        httpApp.sessionCount(),
+        2,
+        "must not allocate past the cap"
+      );
+
+      // The budget is shared: /mcp sees the cap as already spent by /sse.
+      const call = makeRequester(`http://127.0.0.1:${port}`);
+      const mcpRefused = await call(INIT_BODY);
+      assert.equal(mcpRefused.status, 503);
+    } finally {
+      for (const controller of controllers) controller.abort();
+      await httpApp.shutdown();
+      await new Promise<void>((resolve) => listener.close(() => resolve()));
+    }
+  });
 });
