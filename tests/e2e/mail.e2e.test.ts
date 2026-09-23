@@ -82,6 +82,15 @@ describe("mail accounts & rules (e2e)", () => {
     );
   });
 
+  test("test_mail_account sends the saved account's id (so the masked password means 'use the stored one')", async () => {
+    // Upstream checks permissions on the account named by id; an unknown id is
+    // refused with 403 — which only happens if the id reaches the wire.
+    await assert.rejects(
+      () => harness.callTool("test_mail_account", { id: 99_999_999, name: "probe", ...ACCOUNT, password: "**********" }),
+      /Insufficient permissions|HTTP 403/
+    );
+  });
+
   test("process_mail_account queues a fetch", async () => {
     const result = await harness.callTool<{ result: string }>("process_mail_account", { id: accountId });
     assert.equal(result.result, "OK");

@@ -136,8 +136,11 @@ export function registerMailTools(server: McpServer, api: PaperlessAPI) {
 
   server.tool(
     "test_mail_account",
-    "Test IMAP connection settings without saving them. Pass the full account fields. Note: Paperless 3.2 answers an unreachable server or refused connection with a bare HTTP 500 rather than a message — treat a 500 as 'could not connect'.",
-    mailAccountFields,
+    "Test IMAP connection settings without saving them. Pass the full account fields. To test a SAVED account, pass its `id` together with the masked password \"**********\" from get_mail_account — Paperless then uses the stored password (without `id` it would try the literal asterisks and report a login failure). Note: Paperless 3.2 answers an unreachable server or refused connection with a bare HTTP 500 rather than a message — treat a 500 as 'could not connect'.",
+    {
+      id: z.number().optional().describe("ID of a saved account whose stored password should be used"),
+      ...mailAccountFields,
+    },
     Annotations.READ,
     withErrorHandling(async (args) => {
       const response = await api.request("/mail_accounts/test/", {
