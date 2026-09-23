@@ -11,6 +11,7 @@ import { registerShareLinkTools } from "../../src/tools/shareLinks";
 import { registerStoragePathTools } from "../../src/tools/storagePaths";
 import { registerSystemTools } from "../../src/tools/system";
 import { registerTagTools } from "../../src/tools/tags";
+import { registerMailTools } from "../../src/tools/mail";
 import { registerWorkflowTools } from "../../src/tools/workflows";
 
 interface RegisteredTool {
@@ -52,6 +53,7 @@ export function createHarness(baseUrl: string, token: string): E2EHarness {
   registerSavedViewTools(server, api);
   registerShareLinkTools(server, api);
   registerWorkflowTools(server, api);
+  registerMailTools(server, api);
   registerSystemTools(server, api);
 
   return {

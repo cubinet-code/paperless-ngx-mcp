@@ -154,6 +154,22 @@ const WRAPPED = new Set<string>([
   "GET /api/workflows/{id}/",
   "PATCH /api/workflows/{id}/",
   "DELETE /api/workflows/{id}/",
+
+  // mail_accounts
+  "GET /api/mail_accounts/",
+  "POST /api/mail_accounts/",
+  "POST /api/mail_accounts/test/",
+  "GET /api/mail_accounts/{id}/",
+  "PATCH /api/mail_accounts/{id}/",
+  "DELETE /api/mail_accounts/{id}/",
+  "POST /api/mail_accounts/{id}/process/",
+
+  // mail_rules
+  "GET /api/mail_rules/",
+  "POST /api/mail_rules/",
+  "GET /api/mail_rules/{id}/",
+  "PATCH /api/mail_rules/{id}/",
+  "DELETE /api/mail_rules/{id}/",
 ]);
 
 const SKIPPED: Record<string, SkipEntry> = {
@@ -168,6 +184,8 @@ const SKIPPED: Record<string, SkipEntry> = {
   "PUT /api/workflow_actions/{id}/": { reason: "PATCH-only by design" },
   "PUT /api/workflow_triggers/{id}/": { reason: "PATCH-only by design" },
   "PUT /api/workflows/{id}/": { reason: "PATCH-only by design" },
+  "PUT /api/mail_accounts/{id}/": { reason: "PATCH-only by design" },
+  "PUT /api/mail_rules/{id}/": { reason: "PATCH-only by design" },
 
   // Server / admin endpoints, not user-facing for an MCP agent.
   "GET /api/config/": { reason: "server-level config admin" },
@@ -206,21 +224,7 @@ const SKIPPED: Record<string, SkipEntry> = {
   "DELETE /api/profile/totp/": { reason: "current-user profile admin" },
   "GET /api/oauth/callback/": { reason: "OAuth callback, not a user tool" },
 
-  // Mail ingestion / processed-mail history — server-side ingestion config.
-  "GET /api/mail_accounts/": { reason: "mail ingestion config" },
-  "POST /api/mail_accounts/": { reason: "mail ingestion config" },
-  "POST /api/mail_accounts/test/": { reason: "mail ingestion config" },
-  "GET /api/mail_accounts/{id}/": { reason: "mail ingestion config" },
-  "PUT /api/mail_accounts/{id}/": { reason: "mail ingestion config" },
-  "PATCH /api/mail_accounts/{id}/": { reason: "mail ingestion config" },
-  "DELETE /api/mail_accounts/{id}/": { reason: "mail ingestion config" },
-  "POST /api/mail_accounts/{id}/process/": { reason: "mail ingestion config" },
-  "GET /api/mail_rules/": { reason: "mail ingestion config" },
-  "POST /api/mail_rules/": { reason: "mail ingestion config" },
-  "GET /api/mail_rules/{id}/": { reason: "mail ingestion config" },
-  "PUT /api/mail_rules/{id}/": { reason: "mail ingestion config" },
-  "PATCH /api/mail_rules/{id}/": { reason: "mail ingestion config" },
-  "DELETE /api/mail_rules/{id}/": { reason: "mail ingestion config" },
+  // Processed-mail history — ingestion log, not a tool surface.
   "GET /api/processed_mail/": { reason: "mail ingestion history" },
   "GET /api/processed_mail/{id}/": { reason: "mail ingestion history" },
   "POST /api/processed_mail/bulk_delete/": { reason: "mail ingestion history" },

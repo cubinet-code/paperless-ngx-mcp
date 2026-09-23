@@ -11,6 +11,7 @@ import { registerShareLinkTools } from "./tools/shareLinks";
 import { registerStoragePathTools } from "./tools/storagePaths";
 import { registerSystemTools } from "./tools/system";
 import { registerTagTools } from "./tools/tags";
+import { registerMailTools } from "./tools/mail";
 import { registerWorkflowTools } from "./tools/workflows";
 import { version } from "../package.json";
 
@@ -71,6 +72,7 @@ Quick tool-selection guide:
   registerSavedViewTools(server, api);
   registerShareLinkTools(server, api);
   registerWorkflowTools(server, api);
+  registerMailTools(server, api);
   registerSystemTools(server, api);
   registerPrompts(server);
 
