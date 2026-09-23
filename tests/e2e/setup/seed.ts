@@ -1,4 +1,7 @@
 import axios from "axios";
+import fs from "node:fs/promises";
+import os from "node:os";
+import path from "node:path";
 
 const BASE_URL = process.env.PAPERLESS_E2E_URL ?? "http://localhost:8001";
 const ADMIN_USER = process.env.PAPERLESS_ADMIN_USER ?? "admin";
@@ -49,16 +52,47 @@ async function waitForPaperless(maxWaitMs = 120_000): Promise<void> {
   throw new Error(`Paperless at ${BASE_URL} did not become reachable within ${maxWaitMs}ms`);
 }
 
+// Paperless 3.x throttles /api/token/ (HTTP 429 after a few calls) and node
+// --test runs every e2e file in its own process, so mint once per container
+// and cache it. DRF hands out the same token per user, so the cached value
+// stays valid until the container is recreated — then it is re-minted.
+const TOKEN_CACHE = path.join(
+  os.tmpdir(),
+  `paperless-e2e-token-${new URL(BASE_URL).port || "80"}`
+);
+
+async function tokenWorks(token: string): Promise<boolean> {
+  const res = await axios.get(`${BASE_URL}/api/tags/`, {
+    headers: { Authorization: `Token ${token}` },
+    params: { page_size: 1 },
+    validateStatus: () => true,
+    timeout: 10_000,
+  });
+  return res.status === 200;
+}
+
 async function fetchToken(): Promise<string> {
-  const res = await axios.post(
-    `${BASE_URL}/api/token/`,
-    { username: ADMIN_USER, password: ADMIN_PASSWORD },
-    { timeout: 10_000 }
-  );
-  if (!res.data?.token) {
-    throw new Error("Paperless did not return a token");
+  const cached = (await fs.readFile(TOKEN_CACHE, "utf8").catch(() => "")).trim();
+  if (cached && (await tokenWorks(cached))) return cached;
+
+  for (let attempt = 0; ; attempt++) {
+    const res = await axios.post(
+      `${BASE_URL}/api/token/`,
+      { username: ADMIN_USER, password: ADMIN_PASSWORD },
+      { timeout: 10_000, validateStatus: () => true }
+    );
+    // Throttled: wait out the window DRF announces instead of failing the run.
+    if (res.status === 429 && attempt < 2) {
+      const waitSeconds = Number(res.headers["retry-after"]) || 60;
+      await new Promise((r) => setTimeout(r, (waitSeconds + 1) * 1000));
+      continue;
+    }
+    if (res.status !== 200 || !res.data?.token) {
+      throw new Error(`Paperless did not return a token (HTTP ${res.status})`);
+    }
+    await fs.writeFile(TOKEN_CACHE, res.data.token);
+    return res.data.token;
   }
-  return res.data.token;
 }
 
 async function listAll<T extends { name: string }>(

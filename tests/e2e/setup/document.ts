@@ -43,30 +43,56 @@ interface SeededDocument {
   title: string;
 }
 
-async function pollForTask(
+export interface E2ETask {
+  task_id: string;
+  status: string;
+  related_document_ids: number[] | null;
+  result_data: unknown;
+}
+
+const TERMINAL = new Set(["success", "failure", "revoked"]);
+
+export async function waitForTask(
   taskUuid: string,
   token: string,
   timeoutMs = 120_000
-): Promise<number> {
+): Promise<E2ETask> {
   const deadline = Date.now() + timeoutMs;
   while (Date.now() < deadline) {
-    const res = await axios.get<
-      Array<{ task_id: string; status: string; related_document?: number | string | null }>
-    >(`${BASE_URL}/api/tasks/`, {
+    const res = await axios.get<{ results: E2ETask[] }>(`${BASE_URL}/api/tasks/`, {
       headers: { Authorization: `Token ${token}` },
       params: { task_id: taskUuid },
       timeout: 10_000,
     });
-    const task = res.data.find((t) => t.task_id === taskUuid);
-    if (task && task.status === "SUCCESS" && task.related_document != null) {
-      return Number(task.related_document);
-    }
-    if (task && (task.status === "FAILURE" || task.status === "REVOKED")) {
-      throw new Error(`Paperless consumer task ${taskUuid} ended in ${task.status}`);
-    }
+    const task = res.data.results.find((t) => t.task_id === taskUuid);
+    if (task && TERMINAL.has(task.status)) return task;
     await new Promise((r) => setTimeout(r, 1500));
   }
-  throw new Error(`Timed out waiting for consumer task ${taskUuid}`);
+  throw new Error(`Timed out waiting for task ${taskUuid}`);
+}
+
+export async function uploadDocument(
+  token: string,
+  bytes: Buffer,
+  filename: string,
+  title?: string
+): Promise<number> {
+  const api = new PaperlessAPI(BASE_URL, token);
+  const response = await api.postDocument(bytes, filename, title ? { title } : {});
+  const taskUuid = response.replace(/"/g, "").trim();
+  if (!taskUuid) {
+    throw new Error(
+      `post_document did not return a task UUID; got ${JSON.stringify(response)}`
+    );
+  }
+  const task = await waitForTask(taskUuid, token);
+  const id = task.related_document_ids?.[0];
+  if (task.status !== "success" || id == null) {
+    throw new Error(
+      `Consumer task ${taskUuid} ended in ${task.status}: ${JSON.stringify(task.result_data)}`
+    );
+  }
+  return Number(id);
 }
 
 export async function seedDocument(
@@ -74,17 +100,20 @@ export async function seedDocument(
   titlePrefix = "e2e-doc"
 ): Promise<SeededDocument> {
   const title = `${titlePrefix}-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
-  const api = new PaperlessAPI(BASE_URL, token);
-
-  const response = await api.postDocument(buildMinimalPdf(title), `${title}.pdf`, {
-    title,
-  });
-  const taskUuid = response.replace(/"/g, "").trim();
-  if (!taskUuid) {
-    throw new Error(
-      `post_document did not return a task UUID; got ${JSON.stringify(response)}`
-    );
-  }
-  const id = await pollForTask(taskUuid, token);
+  const id = await uploadDocument(token, buildMinimalPdf(title), `${title}.pdf`, title);
   return { id, title };
+}
+
+/** Polls `probe` every second until it returns a value (not undefined). */
+export async function eventually<T>(
+  probe: () => Promise<T | undefined>,
+  timeoutMs = 30_000
+): Promise<T> {
+  const deadline = Date.now() + timeoutMs;
+  for (;;) {
+    const value = await probe();
+    if (value !== undefined) return value;
+    if (Date.now() >= deadline) throw new Error(`Condition not met within ${timeoutMs}ms`);
+    await new Promise((r) => setTimeout(r, 1000));
+  }
 }

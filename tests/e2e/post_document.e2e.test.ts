@@ -22,7 +22,7 @@ describe("post_document — poll round-trip", () => {
     harness = createHarness(BASE_URL, token);
   });
 
-  test("poll=true uploads base64 content and returns SUCCESS with the new document_id", async () => {
+  test("poll=true uploads base64 content and returns success with the new document_id", async () => {
     const title = `post-doc-poll-e2e-${Date.now()}-${Math.random()
       .toString(36)
       .slice(2, 8)}`;
@@ -41,8 +41,8 @@ describe("post_document — poll round-trip", () => {
 
     assert.equal(
       result.status,
-      "SUCCESS",
-      `expected the consumer to finish SUCCESS, got ${JSON.stringify(result)}`
+      "success",
+      `expected the consumer to finish success, got ${JSON.stringify(result)}`
     );
     assert.ok(
       typeof result.document_id === "number" && result.document_id > 0,
