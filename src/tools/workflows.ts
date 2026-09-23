@@ -149,6 +149,18 @@ export const workflowTriggerFields = {
   schedule_date_custom_field: z.number().nullable().optional().describe("Type 4 with schedule_date_field=custom_field: the date custom field ID"),
 };
 
+const nestedTriggerInput = z.object({
+  id: z.number().optional().describe("update_workflow only: ID of an existing trigger to keep and modify. Omit to create a new trigger."),
+  type: workflowTriggerType,
+  ...workflowTriggerFields,
+});
+
+const nestedActionInput = z.object({
+  id: z.number().optional().describe("update_workflow only: ID of an existing action to keep and modify. Omit to create a new action."),
+  type: workflowActionType,
+  ...workflowActionFields,
+});
+
 export function registerWorkflowTools(server: McpServer, api: PaperlessAPI) {
   server.tool(
     "list_workflow_actions",
@@ -322,6 +334,98 @@ export function registerWorkflowTools(server: McpServer, api: PaperlessAPI) {
       await api.request(`/workflow_triggers/${args.id}/`, {
         method: "DELETE",
       });
+      return deletedResponse();
+    })
+  );
+
+  server.tool(
+    "list_workflows",
+    "List workflows (each with its nested triggers and actions) with optional pagination.",
+    paginationFields,
+    Annotations.READ,
+    withErrorHandling(async (args) => {
+      const queryString = buildQueryString(args);
+      const response = await api.request(
+        `/workflows/${queryString ? `?${queryString}` : ""}`
+      );
+      return {
+        content: [{ type: "text", text: JSON.stringify(response) }],
+      };
+    })
+  );
+
+  server.tool(
+    "get_workflow",
+    "Get one workflow by ID, including its full triggers and actions.",
+    { id: z.number() },
+    Annotations.READ,
+    withErrorHandling(async (args) => {
+      const response = await api.request(`/workflows/${args.id}/`);
+      return {
+        content: [{ type: "text", text: JSON.stringify(response) }],
+      };
+    })
+  );
+
+  server.tool(
+    "create_workflow",
+    "Create a complete workflow — the automation Paperless actually runs — with its triggers and actions in one call. The workflow runs its actions in order whenever ANY of its triggers matches. Example: strip PDF passwords from API uploads = triggers [{type: 2, sources: [2]}] + actions [{type: 5, passwords: [\"secret\"]}]. Triggers and actions are given as full objects (same fields as create_workflow_trigger / create_workflow_action). Paperless rejects a remote OCR action (7) without a consumption-started trigger (1), and an apply-AI-suggestions action (8) with only consumption-started triggers.",
+    {
+      name: z.string().min(1).max(256),
+      order: z.number().int().optional().describe("Run order relative to other workflows (lower runs first)"),
+      enabled: z.boolean().optional().describe("Default true"),
+      triggers: z.array(nestedTriggerInput).min(1),
+      actions: z.array(nestedActionInput).min(1),
+    },
+    Annotations.CREATE,
+    withErrorHandling(async (args) => {
+      const response = await api.request("/workflows/", {
+        method: "POST",
+        body: JSON.stringify(args),
+      });
+      return {
+        content: [{ type: "text", text: JSON.stringify(response) }],
+      };
+    })
+  );
+
+  server.tool(
+    "update_workflow",
+    "Update ONE workflow (PATCH). name/order/enabled change only when passed. ⚠️ `triggers` and `actions`, when passed, REPLACE the workflow's whole list: entries with an `id` update that existing item, entries without an `id` are created, and existing items you leave out are DELETED. To edit one action, call get_workflow first and send back the complete list with your change.",
+    {
+      id: z.number(),
+      name: z.string().min(1).max(256).optional(),
+      order: z.number().int().optional(),
+      enabled: z.boolean().optional(),
+      triggers: z.array(nestedTriggerInput).optional(),
+      actions: z.array(nestedActionInput).optional(),
+    },
+    Annotations.UPDATE,
+    withErrorHandling(async (args) => {
+      const { id, ...data } = args;
+      const response = await api.request(`/workflows/${id}/`, {
+        method: "PATCH",
+        body: JSON.stringify(data),
+      });
+      return {
+        content: [{ type: "text", text: JSON.stringify(response) }],
+      };
+    })
+  );
+
+  server.tool(
+    "delete_workflow",
+    "⚠️ DESTRUCTIVE: Permanently delete a workflow. Documents it already processed are not changed.",
+    {
+      id: z.number(),
+      confirm: z
+        .boolean()
+        .describe("Must be true to confirm this destructive operation"),
+    },
+    Annotations.DELETE,
+    withErrorHandling(async (args) => {
+      requireConfirm(args.confirm);
+      await api.request(`/workflows/${args.id}/`, { method: "DELETE" });
       return deletedResponse();
     })
   );

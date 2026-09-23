@@ -129,6 +129,13 @@ const WRAPPED = new Set<string>([
   "GET /api/workflow_triggers/{id}/",
   "PATCH /api/workflow_triggers/{id}/",
   "DELETE /api/workflow_triggers/{id}/",
+
+  // workflows
+  "GET /api/workflows/",
+  "POST /api/workflows/",
+  "GET /api/workflows/{id}/",
+  "PATCH /api/workflows/{id}/",
+  "DELETE /api/workflows/{id}/",
 ]);
 
 const SKIPPED: Record<string, SkipEntry> = {
@@ -142,6 +149,7 @@ const SKIPPED: Record<string, SkipEntry> = {
   "PUT /api/tags/{id}/": { reason: "PATCH-only by design" },
   "PUT /api/workflow_actions/{id}/": { reason: "PATCH-only by design" },
   "PUT /api/workflow_triggers/{id}/": { reason: "PATCH-only by design" },
+  "PUT /api/workflows/{id}/": { reason: "PATCH-only by design" },
 
   // Server / admin endpoints, not user-facing for an MCP agent.
   "GET /api/config/": { reason: "server-level config admin" },
@@ -214,15 +222,6 @@ const SKIPPED: Record<string, SkipEntry> = {
   "GET /api/search/": {
     reason: "global search; we use /documents/?query= instead",
   },
-
-  // Top-level workflows resource — we wrap the inner actions/triggers, full
-  // workflow CRUD is a future addition.
-  "GET /api/workflows/": { reason: "future: full workflow CRUD" },
-  "POST /api/workflows/": { reason: "future: full workflow CRUD" },
-  "GET /api/workflows/{id}/": { reason: "future: full workflow CRUD" },
-  "PUT /api/workflows/{id}/": { reason: "future: full workflow CRUD" },
-  "PATCH /api/workflows/{id}/": { reason: "future: full workflow CRUD" },
-  "DELETE /api/workflows/{id}/": { reason: "future: full workflow CRUD" },
 };
 
 interface SchemaDoc {
