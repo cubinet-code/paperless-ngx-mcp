@@ -96,9 +96,10 @@ describe("edit_documents_bulk (e2e) — payload shapes accepted by current Paper
       })).data.id;
     const from = await make(`e2e-merge-from-${stamp}`);
     const to = await make(`e2e-merge-to-${stamp}`);
-    const [{ id: a }, { id: b }] = await Promise.all([
+    const [{ id: a }, { id: b }, { id: bystander }] = await Promise.all([
       seedDocument(token, "bulk-filter-a"),
       seedDocument(token, "bulk-filter-b"),
+      seedDocument(token, "bulk-filter-bystander"),
     ]);
     await harness.callTool("edit_documents_bulk", { documents: [a, b], method: "set_correspondent", correspondent: from });
 
@@ -114,6 +115,26 @@ describe("edit_documents_bulk (e2e) — payload shapes accepted by current Paper
       return da.correspondent === to && db.correspondent === to ? true : undefined;
     });
     assert.equal(moved, true);
+    // Negative control: a document outside the filter keeps its correspondent.
+    assert.equal((await fetchDocument(token, bystander)).correspondent, null);
+  });
+
+  test("all + filters refuses keys and values Paperless would silently ignore", async () => {
+    const { id } = await seedDocument(token, "bulk-filter-guard");
+
+    await assert.rejects(
+      () => harness.callTool("edit_documents_bulk", { all: true, filters: { tag: 1 }, method: "add_tag", tag: 1 }),
+      /'tag'/
+    );
+    await assert.rejects(
+      () => harness.callTool("edit_documents_bulk", { all: true, filters: { correspondent__id: "abc" }, method: "add_tag", tag: 1 }),
+      /HTTP 400/
+    );
+    const tagged = await axios.get<{ tags: number[] }>(`${BASE_URL}/api/documents/${id}/`, {
+      headers: { Authorization: `Token ${token}` },
+      timeout: 10_000,
+    });
+    assert.deepEqual(tagged.data.tags, [], "a refused call must not have changed anything");
   });
 
   test("remove_password with update_document stores an unlocked version", async () => {

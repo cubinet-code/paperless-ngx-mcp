@@ -19,12 +19,18 @@ interface BulkEditCall {
   selectAll?: Record<string, unknown>;
 }
 
-function bulkEditCapture(): {
+function bulkEditCapture(matchCount = 2): {
   calls: BulkEditCall[];
+  previews: string[];
   api: ReturnType<typeof createMockApi>;
 } {
   const calls: BulkEditCall[] = [];
+  const previews: string[] = [];
   const api = createMockApi({
+    getDocuments: async (query: string) => {
+      previews.push(query);
+      return { count: matchCount, next: null, previous: null, results: [] };
+    },
     bulkEditDocuments: async (
       documents: number[],
       method: string,
@@ -35,7 +41,7 @@ function bulkEditCapture(): {
       return { result: "OK" };
     },
   });
-  return { calls, api };
+  return { calls, previews, api };
 }
 
 describe("edit_documents_bulk — modify_custom_fields", () => {
@@ -344,6 +350,61 @@ describe("edit_documents_bulk — selection by filter", () => {
     assert.deepEqual(calls[0].selectAll, { filters: { correspondent__id: 12 }, excluded_documents: [3] });
     assert.deepEqual(calls[0].parameters, { correspondent: 34 });
   });
+
+  test("previews the selection first and reports how many documents matched", async () => {
+    const { calls, previews, api } = bulkEditCapture(7);
+    const { server, tools } = createMockServer();
+    registerDocumentTools(server, api);
+
+    const result = await tools.get("edit_documents_bulk")!.callback({
+      all: true,
+      filters: { correspondent__id: 12 },
+      method: "add_tag",
+      tag: 1,
+    });
+
+    const params = new URLSearchParams(previews[0].replace(/^\?/, ""));
+    assert.equal(params.get("correspondent__id"), "12");
+    assert.equal(params.get("page_size"), "1");
+    assert.equal(calls.length, 1);
+    assert.deepEqual(getTextContent(result), { result: "OK", matched_documents: 7 });
+  });
+
+  test("does not call bulk_edit when the filters match nothing", async () => {
+    const { calls, api } = bulkEditCapture(0);
+    const { server, tools } = createMockServer();
+    registerDocumentTools(server, api);
+
+    const result = await tools.get("edit_documents_bulk")!.callback({
+      all: true,
+      filters: { correspondent__id: 12 },
+      method: "delete",
+      confirm: true,
+    });
+
+    assert.equal(calls.length, 0);
+    assert.equal((getTextContent(result) as { matched_documents: number }).matched_documents, 0);
+  });
+
+  for (const key of ["tag", "correspondent", "search", "page_size"]) {
+    test(`refuses filter key '${key}', which Paperless would ignore and so select every document`, async () => {
+      const { calls, previews, api } = bulkEditCapture();
+      const { server, tools } = createMockServer();
+      registerDocumentTools(server, api);
+
+      await assert.rejects(
+        () =>
+          tools.get("edit_documents_bulk")!.callback({
+            all: true,
+            filters: { [key]: 5 },
+            method: "add_tag",
+            tag: 1,
+          }),
+        new RegExp(`'${key}'`)
+      );
+      assert.equal(calls.length + previews.length, 0);
+    });
+  }
 
   for (const [label, args, message] of [
     ["all without filters", { all: true, method: "delete", confirm: true }, /non-empty `filters`/],

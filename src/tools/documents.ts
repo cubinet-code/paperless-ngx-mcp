@@ -5,6 +5,7 @@ import { PaperlessAPI } from "../api/PaperlessAPI";
 import { BulkEditParameters, Document } from "../api/types";
 import { Annotations } from "./utils/annotations";
 import { CUSTOM_FIELD_QUERY_DESCRIPTION, CUSTOM_FIELD_VALUE_DESCRIPTION } from "./utils/descriptions";
+import { BULK_SELECTION_FILTER_KEYS } from "./utils/bulkFilters";
 import { arrayNotEmpty } from "./utils/empty";
 import { FILE_INPUT_DESCRIPTION, readFileInput } from "./utils/fileInput";
 import { withErrorHandling } from "./utils/middlewares";
@@ -30,7 +31,7 @@ function getContentDispositionHeader(headers: unknown): string | null {
 export function registerDocumentTools(server: McpServer, api: PaperlessAPI) {
   server.tool(
     "edit_documents_bulk",
-    "Apply ONE of a fixed set of operations to MANY documents at once. Methods: set_correspondent, set_document_type, set_storage_path, add_tag, remove_tag, modify_tags, modify_custom_fields, set_permissions, delete, reprocess, merge, split, rotate, delete_pages, edit_pdf, remove_password. For per-document field edits including title, content, created (date), archive_serial_number, or owner, use update_document instead — those fields are not editable here. Note: 'remove_tag' only removes the tag from the specified documents (tag stays in the system); 'delete_tag' permanently deletes the tag from the entire system. ⚠️ WARNING: method 'delete' permanently deletes documents and requires confirm=true. Select documents either by `documents` (IDs) or by `all: true` + `filters` (the same filter names as list_documents' wire query, e.g. {\"correspondent__id\": 12}) — the filter form moves every matching document in one call, e.g. reassigning all documents from a duplicate correspondent before deleting it. Method remove_password strips a PDF password (needs `password`); with update_document=true the unlocked file is stored as a new version of the same document. Method reprocess accepts remote_ocr=true to use the configured remote OCR engine.",
+    "Apply ONE of a fixed set of operations to MANY documents at once. Methods: set_correspondent, set_document_type, set_storage_path, add_tag, remove_tag, modify_tags, modify_custom_fields, set_permissions, delete, reprocess, merge, split, rotate, delete_pages, edit_pdf, remove_password. For per-document field edits including title, content, created (date), archive_serial_number, or owner, use update_document instead — those fields are not editable here. Note: 'remove_tag' only removes the tag from the specified documents (tag stays in the system); 'delete_tag' permanently deletes the tag from the entire system. ⚠️ WARNING: method 'delete' permanently deletes documents and requires confirm=true. Select documents either by `documents` (IDs) or by `all: true` + `filters` — Paperless document filter names such as correspondent__id, tags__id__all, document_type__id, title_content, created__date__gte or query (full text); the filter form changes every matching document in one call, e.g. reassigning all documents from a duplicate correspondent before deleting it. Unknown filter keys are refused, and the result reports matched_documents. all=true is not supported for merge, split, delete_pages, edit_pdf or remove_password. Method remove_password strips a PDF password (needs `password`); with update_document=true the unlocked file is stored as a new version of the same document. Method reprocess accepts remote_ocr=true to use the configured remote OCR engine.",
     {
       documents: z
         .array(z.number())
@@ -43,7 +44,7 @@ export function registerDocumentTools(server: McpServer, api: PaperlessAPI) {
       filters: z
         .record(z.string(), z.union([z.string(), z.number(), z.boolean()]))
         .optional()
-        .describe("With all=true (required then): list_documents wire filters, e.g. {\"correspondent__id\": 12}, {\"tags__id__all\": \"3,4\"}, {\"document_type__id\": 5}"),
+        .describe("With all=true (required then): Paperless document filters, e.g. {\"correspondent__id\": 12}, {\"tags__id__all\": \"3,4\"}, {\"document_type__id\": 5}, {\"title_content\": \"invoice\"}. Not list_documents' tool arguments: use correspondent__id, not correspondent. Unknown keys are refused."),
       excluded_documents: z
         .array(z.number())
         .optional()
@@ -173,6 +174,16 @@ export function registerDocumentTools(server: McpServer, api: PaperlessAPI) {
         if (documents && documents.length > 0) {
           throw new Error("Pass either `documents` or `all` + `filters`, not both.");
         }
+        const unsupported = Object.keys(filters).filter(
+          (key) => !BULK_SELECTION_FILTER_KEYS.has(key)
+        );
+        if (unsupported.length > 0) {
+          throw new Error(
+            `Unsupported filter key(s) for all=true: ${unsupported.map((k) => `'${k}'`).join(", ")}. ` +
+              "Paperless ignores keys it doesn't know, which would select every document. " +
+              "Use document filter names such as correspondent__id, tags__id__all, document_type__id, title_content or query."
+          );
+        }
       } else if (!documents || documents.length === 0) {
         throw new Error("Pass `documents` (IDs), or `all: true` with `filters`.");
       }
@@ -192,17 +203,42 @@ export function registerDocumentTools(server: McpServer, api: PaperlessAPI) {
         apiParameters.remove_custom_fields ??= [];
       }
 
-      const response = await api.bulkEditDocuments(
-        all ? [] : documents!,
-        method,
-        apiParameters,
-        all ? { filters: filters!, excluded_documents } : undefined
+      if (!all) {
+        const response = await api.bulkEditDocuments(documents!, method, apiParameters);
+        return {
+          content: [
+            {
+              type: "text",
+              text: JSON.stringify({ result: response.result }),
+            },
+          ],
+        };
+      }
+
+      // Preview the selection through the list endpoint: it rejects values it
+      // can't parse with a 400, where bulk selection would silently drop them.
+      const preview = await api.getDocuments(
+        `?${buildQueryString({ ...filters!, page_size: 1, fields: "id" })}`
       );
+      if (preview.count === 0) {
+        return {
+          content: [
+            {
+              type: "text",
+              text: JSON.stringify({ result: "No documents match these filters; nothing changed.", matched_documents: 0 }),
+            },
+          ],
+        };
+      }
+      const response = await api.bulkEditDocuments([], method, apiParameters, {
+        filters: filters!,
+        excluded_documents,
+      });
       return {
         content: [
           {
             type: "text",
-            text: JSON.stringify({ result: response.result }),
+            text: JSON.stringify({ result: response.result, matched_documents: preview.count }),
           },
         ],
       };

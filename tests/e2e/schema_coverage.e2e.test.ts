@@ -3,6 +3,7 @@ import assert from "node:assert/strict";
 import axios from "axios";
 import { z } from "zod";
 import { registerDocumentTools } from "../../src/tools/documents";
+import { BULK_SELECTION_FILTER_KEYS } from "../../src/tools/utils/bulkFilters";
 import { createMockApi, createMockServer } from "../../src/tools/test-helpers";
 
 const BASE_URL = process.env.PAPERLESS_E2E_URL ?? "http://localhost:8001";
@@ -312,6 +313,23 @@ describe("schema coverage (e2e) — every API endpoint is wrapped or explicitly 
       [],
       `Endpoints removed upstream (still in SKIPPED):\n${removed.join("\n")}`
     );
+  });
+
+  test("edit_documents_bulk's all+filters allowlist matches the /api/documents/ filters", () => {
+    // Paperless ignores unknown filter keys in bulk "all" selection, so the
+    // allowlist must track upstream exactly: a filter we don't know is refused
+    // (safe), a filter we allow but upstream dropped would select everything.
+    const params = (
+      schema.paths["/api/documents/"] as {
+        get: { parameters: Array<{ name: string }> };
+      }
+    ).get.parameters.map((p) => p.name);
+    const notFilters = new Set(["fields", "full_perms", "ordering", "page", "page_size", "search"]);
+    const upstream = params.filter((p) => !notFilters.has(p)).sort();
+    // more_like_id is honoured by the view but not declared as a parameter.
+    const ours = [...BULK_SELECTION_FILTER_KEYS].filter((k) => k !== "more_like_id").sort();
+
+    assert.deepEqual(ours, upstream);
   });
 
   test("BulkEditSerializer.method enum matches our edit_documents_bulk method enum", () => {
