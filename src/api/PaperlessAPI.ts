@@ -95,9 +95,12 @@ export class PaperlessAPI {
 
   private toError(error: unknown, method: string, path: string): Error {
     if (axios.isCancel(error)) {
+      const advice =
+        method.toUpperCase() === "GET"
+          ? "Retry with a smaller page_size or narrower filters; if it keeps happening, check the Paperless server's load and logs."
+          : "The change may already have been applied — check the current state before retrying.";
       return new Error(
-        `Paperless did not finish responding within ${this.deadlineMs / 1000}s (${method} ${path}). ` +
-          "Retry with a smaller page_size or narrower filters; if it keeps happening, check the Paperless server's load and logs."
+        `Paperless did not finish responding within ${this.deadlineMs / 1000}s (${method} ${path}). ${advice}`
       );
     }
     if (axios.isAxiosError(error)) {

@@ -180,6 +180,20 @@ describe("PaperlessAPI", () => {
       assert.ok(Date.now() - start < 2000, "must not wait past the deadline");
     });
 
+    test("a timed-out write warns that it may already have been applied", { timeout: 5000 }, async () => {
+      const api = new PaperlessAPI(`http://127.0.0.1:${port}`, "t", 300);
+
+      await assert.rejects(
+        () => api.request("/documents/bulk_edit/", { method: "POST", body: "{}" }),
+        (err: Error) => {
+          assert.match(err.message, /\(POST \/documents\/bulk_edit\/\)/);
+          assert.match(err.message, /may already have been applied/);
+          assert.doesNotMatch(err.message, /page_size/);
+          return true;
+        }
+      );
+    });
+
     test("requestRaw (downloads) is not bound by the JSON deadline", async () => {
       const api = new PaperlessAPI(`http://127.0.0.1:${port}`, "t", 100);
 
