@@ -1,5 +1,6 @@
 import { test, describe } from "node:test";
 import assert from "node:assert/strict";
+import { z } from "zod";
 import { registerSystemTools } from "./system";
 import { createMockServer, createMockApi, getTextContent } from "./test-helpers";
 
@@ -128,162 +129,66 @@ describe("empty_trash tool", () => {
 });
 
 describe("list_tasks tool", () => {
-  test("uses supported filter parameters", async () => {
-    let calledPath: string | undefined;
+  const page = (results: unknown[]) => ({
+    count: results.length,
+    next: null,
+    previous: null,
+    results,
+  });
+
+  test("forwards status, task_type and trigger_source filters", async () => {
+    let calledPath = "";
     const { server, tools } = createMockServer();
     const api = createMockApi({
       request: async (path: string) => {
         calledPath = path;
-        return [];
+        return page([]);
       },
     });
     registerSystemTools(server, api);
 
-    const tool = tools.get("list_tasks")!;
-    await tool.callback({ status: "success", task_name: "consume_file" });
-
-    assert.ok(calledPath!.includes("status=success"));
-    assert.ok(calledPath!.includes("task_name=consume_file"));
-    // Should NOT have task_id
-    assert.ok(!calledPath!.includes("task_id"));
-  });
-
-  test("falls back to uppercase status when the server rejects lowercase (Paperless 2.x)", async () => {
-    const calledPaths: string[] = [];
-    const { server, tools } = createMockServer();
-    const api = createMockApi({
-      request: async (path: string) => {
-        calledPaths.push(path);
-        // 2.x rejects lowercase statuses with a 400.
-        if (path.includes("status=success")) {
-          throw new Error("Request failed with status code 400 (HTTP 400)");
-        }
-        return [];
-      },
-    });
-    registerSystemTools(server, api);
-
-    const tool = tools.get("list_tasks")!;
-    await tool.callback({ status: "success" });
-
-    assert.equal(calledPaths.length, 2, "should retry once with the other casing");
-    assert.ok(calledPaths[0].includes("status=success"));
-    assert.ok(calledPaths[1].includes("status=SUCCESS"));
-
-    // The accepted casing is remembered, so the next call goes straight there.
-    calledPaths.length = 0;
-    await tool.callback({ status: "failure" });
-    assert.deepEqual(calledPaths.length, 1);
-    assert.ok(calledPaths[0].includes("status=FAILURE"));
-  });
-
-  test("passes through the Paperless 3.x task_type and trigger_source filters", async () => {
-    let calledPath: string | undefined;
-    const { server, tools } = createMockServer();
-    const api = createMockApi({
-      request: async (path: string) => {
-        calledPath = path;
-        return { count: 0, next: null, previous: null, results: [] };
-      },
-    });
-    registerSystemTools(server, api);
-
-    const tool = tools.get("list_tasks")!;
-    await tool.callback({
+    await tools.get("list_tasks")!.callback({
+      status: "success",
       task_type: "consume_file",
       trigger_source: "api_upload",
     });
 
-    assert.ok(calledPath!.includes("task_type=consume_file"));
-    assert.ok(calledPath!.includes("trigger_source=api_upload"));
+    assert.ok(calledPath.includes("status=success"));
+    assert.ok(calledPath.includes("task_type=consume_file"));
+    assert.ok(calledPath.includes("trigger_source=api_upload"));
   });
 
-  test("works with no filters", async () => {
-    let calledPath: string | undefined;
+  test("asks the server for `limit` tasks (default 25) and returns the results array", async () => {
+    const paths: string[] = [];
+    const tasks = [{ id: 1, task_id: "t1", status: "success" }];
     const { server, tools } = createMockServer();
     const api = createMockApi({
       request: async (path: string) => {
-        calledPath = path;
-        return [];
+        paths.push(path);
+        return page(tasks);
       },
     });
     registerSystemTools(server, api);
-
     const tool = tools.get("list_tasks")!;
+
+    const result = await tool.callback({ limit: 5 });
     await tool.callback({});
 
-    assert.equal(calledPath, "/tasks/");
+    assert.deepEqual(getTextContent(result), tasks);
+    assert.ok(paths[0].includes("page_size=5"), paths[0]);
+    assert.ok(paths[1].includes("page_size=25"), paths[1]);
   });
 
-  test("limits results client-side with limit parameter", async () => {
-    const fakeTasks = Array.from({ length: 100 }, (_, i) => ({
-      id: i + 1,
-      task_id: `task-${i + 1}`,
-      task_name: "consume_file",
-      status: "SUCCESS",
-      date_created: `2026-01-${String(i + 1).padStart(2, "0")}`,
-    }));
+  test("task_type accepts apply_ai_suggestions and the 2.x-only filters are gone", () => {
     const { server, tools } = createMockServer();
-    const api = createMockApi({
-      request: async (_path: string) => fakeTasks,
-    });
-    registerSystemTools(server, api);
+    registerSystemTools(server, createMockApi({}));
+    const shape = tools.get("list_tasks")!.schema as z.ZodRawShape;
 
-    const tool = tools.get("list_tasks")!;
-    const result = await tool.callback({ limit: 10 });
-    const parsed = getTextContent(result) as any[];
-
-    assert.equal(parsed.length, 10);
-    assert.equal(parsed[0].id, 1);
-    assert.equal(parsed[9].id, 10);
-  });
-
-  test("handles the paginated /tasks/ envelope returned by Paperless 3.x", async () => {
-    const fakeTasks = Array.from({ length: 40 }, (_, i) => ({
-      id: i + 1,
-      task_id: `task-${i + 1}`,
-      task_name: "consume_file",
-      status: "SUCCESS",
-    }));
-    const { server, tools } = createMockServer();
-    const api = createMockApi({
-      // Paperless 3.0 paginates /tasks/; 2.x returned a bare array.
-      request: async (_path: string) => ({
-        count: fakeTasks.length,
-        next: null,
-        previous: null,
-        results: fakeTasks,
-      }),
-    });
-    registerSystemTools(server, api);
-
-    const tool = tools.get("list_tasks")!;
-    const result = await tool.callback({ limit: 5 });
-    const parsed = getTextContent(result) as any[];
-
-    assert.ok(Array.isArray(parsed), "must return an array, not the envelope");
-    assert.equal(parsed.length, 5);
-    assert.equal(parsed[0].task_id, "task-1");
-  });
-
-  test("defaults to 25 results when no limit specified and array is large", async () => {
-    const fakeTasks = Array.from({ length: 100 }, (_, i) => ({
-      id: i + 1,
-      task_id: `task-${i + 1}`,
-      task_name: "consume_file",
-      status: "SUCCESS",
-    }));
-    const { server, tools } = createMockServer();
-    const api = createMockApi({
-      request: async (_path: string) => fakeTasks,
-    });
-    registerSystemTools(server, api);
-
-    const tool = tools.get("list_tasks")!;
-    const result = await tool.callback({});
-    const parsed = getTextContent(result) as any[];
-
-    assert.equal(parsed.length, 25);
+    assert.doesNotThrow(() =>
+      z.object(shape).parse({ task_type: "apply_ai_suggestions" })
+    );
+    assert.equal("task_name" in shape, false);
+    assert.equal("type" in shape, false);
   });
 });
 

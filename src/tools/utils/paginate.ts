@@ -5,18 +5,6 @@ export interface PaginatedResponse<T> {
   results: T[];
 }
 
-/**
- * Normalises a list response that may arrive in either shape. Paperless 3.0
- * paginates endpoints that previously returned a flat array (notably
- * `/tasks/`), so accept both to keep working against 2.x and 3.x servers.
- */
-export function toItemArray<T>(
-  response: PaginatedResponse<T> | T[] | null | undefined
-): T[] {
-  if (Array.isArray(response)) return response;
-  return response?.results ?? [];
-}
-
 const FETCH_PAGE_SIZE = 100;
 const MAX_PAGES = 1000;
 

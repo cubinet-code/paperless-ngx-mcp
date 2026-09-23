@@ -1,7 +1,7 @@
 import { test, describe } from "node:test";
 import assert from "node:assert/strict";
 import { z } from "zod";
-import { registerDocumentTools, pollConsumeTask } from "./documents";
+import { registerDocumentTools } from "./documents";
 import {
   createMockServer,
   createMockApi,
@@ -236,14 +236,19 @@ describe("post_document — poll", () => {
       postDocument: async () => "the-task-uuid",
       request: async (pathAndQuery: string) => {
         polled.push(pathAndQuery);
-        return [
-          {
-            task_id: "the-task-uuid",
-            status: "SUCCESS",
-            related_document: 42,
-            result: "Success. New document id 42 created.",
-          },
-        ];
+        return {
+          count: 1,
+          next: null,
+          previous: null,
+          results: [
+            {
+              task_id: "the-task-uuid",
+              status: "success",
+              related_document_ids: [42],
+              result_data: { document_id: 42 },
+            },
+          ],
+        };
       },
     });
     const { server, tools } = createMockServer();
@@ -256,9 +261,10 @@ describe("post_document — poll", () => {
     });
     const body = getTextContent(result) as Record<string, unknown>;
 
-    assert.equal(body.status, "SUCCESS");
+    assert.equal(body.status, "success");
     assert.equal(body.document_id, 42);
     assert.equal(body.task_id, "the-task-uuid");
+    assert.deepEqual(body.result, { document_id: 42 });
     assert.ok(
       polled.some((p) => p.includes("task_id=the-task-uuid")),
       "should poll /tasks/ filtered by the returned task_id"
@@ -268,13 +274,18 @@ describe("post_document — poll", () => {
   test("poll:true surfaces the consumer error when the task fails", async () => {
     const api = createMockApi({
       postDocument: async () => "fail-uuid",
-      request: async () => [
-        {
-          task_id: "fail-uuid",
-          status: "FAILURE",
-          result: "InputFileError: the file is not a valid PDF",
-        },
-      ],
+      request: async () => ({
+        count: 1,
+        next: null,
+        previous: null,
+        results: [
+          {
+            task_id: "fail-uuid",
+            status: "failure",
+            result_data: "InputFileError: the file is not a valid PDF",
+          },
+        ],
+      }),
     });
     const { server, tools } = createMockServer();
     registerDocumentTools(server, api);
@@ -286,7 +297,7 @@ describe("post_document — poll", () => {
     });
     const body = getTextContent(result) as Record<string, unknown>;
 
-    assert.equal(body.status, "FAILURE");
+    assert.equal(body.status, "failure");
     assert.match(String(body.result), /InputFileError/);
   });
 
@@ -310,36 +321,5 @@ describe("post_document — poll", () => {
 
     assert.equal(body.status, "async-uuid");
     assert.equal(requested, false, "must not poll when poll is not requested");
-  });
-});
-
-describe("pollConsumeTask", () => {
-  test("returns the last non-terminal task once the timeout elapses (never hangs)", async () => {
-    const api = createMockApi({
-      request: async () => [{ task_id: "slow", status: "STARTED" }],
-    });
-
-    // timeoutMs 0 -> exactly one poll, deadline check returns before any sleep.
-    const task = await pollConsumeTask(api, "slow", 0);
-
-    assert.equal(task?.status, "STARTED");
-  });
-
-  test("finds the task in the paginated /tasks/ envelope returned by Paperless 3.x", async () => {
-    const api = createMockApi({
-      // Paperless 3.0 paginates /tasks/; 2.x returned a bare array. Before this
-      // was handled, the task was never found and polling always timed out.
-      request: async () => ({
-        count: 1,
-        next: null,
-        previous: null,
-        results: [{ task_id: "done", status: "SUCCESS", related_document: 42 }],
-      }),
-    });
-
-    const task = await pollConsumeTask(api, "done", 0);
-
-    assert.equal(task?.status, "SUCCESS");
-    assert.equal(task?.related_document, 42);
   });
 });

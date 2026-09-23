@@ -1,41 +1,46 @@
-/**
- * Paperless 3.0 reworked the task serializer: statuses became lowercase
- * (`SUCCESS` -> `success`) and several fields were renamed (`related_document`
- * -> `related_document_ids`, `result` -> `result_data`, `task_name` ->
- * `task_type`). These helpers read either shape so the tools keep working
- * against both 2.x and 3.x servers.
- */
+import { PaperlessAPI } from "../../api/PaperlessAPI";
+import { PaginatedResponse } from "./paginate";
 
 const TERMINAL_TASK_STATES = new Set(["success", "failure", "revoked"]);
 
 export function isTerminalTaskStatus(status: string | undefined): boolean {
-  return status !== undefined && TERMINAL_TASK_STATES.has(status.toLowerCase());
+  return status !== undefined && TERMINAL_TASK_STATES.has(status);
 }
 
-export function taskStatusIs(
-  status: string | undefined,
-  expected: string
-): boolean {
-  return status !== undefined && status.toLowerCase() === expected.toLowerCase();
-}
-
-export interface TaskDocumentRefs {
-  related_document?: number | string | null;
-  related_document_ids?: (number | string)[] | null;
-}
-
-export function relatedDocumentId(
-  task: TaskDocumentRefs
-): number | undefined {
-  const value = task.related_document_ids?.[0] ?? task.related_document;
-  if (value == null) return undefined;
-  const id = Number(value);
-  return Number.isFinite(id) ? id : undefined;
-}
-
-export function taskResult(task: {
-  result?: unknown;
+export interface ConsumeTask {
+  task_id: string;
+  status: string;
   result_data?: unknown;
-}): unknown {
-  return task.result ?? task.result_data;
+  related_document_ids?: number[] | null;
+  [key: string]: unknown;
+}
+
+const POLL_INTERVAL_MS = 1500;
+
+/**
+ * Polls `/tasks/?task_id=<uuid>` until the task reaches a terminal state
+ * (success / failure / revoked) or `timeoutMs` elapses. Returns the matching
+ * task, or the last-seen still-running task (or null) if it never finished in
+ * time. The deadline is checked before sleeping, so `timeoutMs=0` polls exactly
+ * once and returns immediately without waiting.
+ */
+export async function pollConsumeTask(
+  api: PaperlessAPI,
+  taskUuid: string,
+  timeoutMs: number
+): Promise<ConsumeTask | null> {
+  const deadline = Date.now() + timeoutMs;
+  for (;;) {
+    const tasks = await api.request<PaginatedResponse<ConsumeTask>>(
+      `/tasks/?task_id=${encodeURIComponent(taskUuid)}`
+    );
+    const task = tasks.results.find((t) => t.task_id === taskUuid);
+    if (task && isTerminalTaskStatus(task.status)) {
+      return task;
+    }
+    if (Date.now() >= deadline) {
+      return task ?? null;
+    }
+    await new Promise((resolve) => setTimeout(resolve, POLL_INTERVAL_MS));
+  }
 }

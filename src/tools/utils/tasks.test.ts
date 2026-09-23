@@ -1,63 +1,50 @@
 import { test, describe } from "node:test";
 import assert from "node:assert/strict";
-import {
-  isTerminalTaskStatus,
-  relatedDocumentId,
-  taskResult,
-  taskStatusIs,
-} from "./tasks";
+import { isTerminalTaskStatus, pollConsumeTask } from "./tasks";
+import { createMockApi } from "../test-helpers";
+
+const page = (results: unknown[]) => ({
+  count: results.length,
+  next: null,
+  previous: null,
+  results,
+});
 
 describe("isTerminalTaskStatus", () => {
-  test("recognises Paperless 2.x uppercase statuses", () => {
-    assert.equal(isTerminalTaskStatus("SUCCESS"), true);
-    assert.equal(isTerminalTaskStatus("FAILURE"), true);
-    assert.equal(isTerminalTaskStatus("REVOKED"), true);
+  test("recognises success, failure and revoked", () => {
+    for (const s of ["success", "failure", "revoked"]) {
+      assert.equal(isTerminalTaskStatus(s), true, s);
+    }
   });
 
-  test("recognises Paperless 3.x lowercase statuses", () => {
-    assert.equal(isTerminalTaskStatus("success"), true);
-    assert.equal(isTerminalTaskStatus("failure"), true);
-    assert.equal(isTerminalTaskStatus("revoked"), true);
-  });
-
-  test("treats in-flight and missing statuses as non-terminal", () => {
-    assert.equal(isTerminalTaskStatus("STARTED"), false);
+  test("treats pending, started and a missing status as non-terminal", () => {
     assert.equal(isTerminalTaskStatus("pending"), false);
+    assert.equal(isTerminalTaskStatus("started"), false);
     assert.equal(isTerminalTaskStatus(undefined), false);
   });
 });
 
-describe("taskStatusIs", () => {
-  test("compares case-insensitively across both versions", () => {
-    assert.equal(taskStatusIs("SUCCESS", "success"), true);
-    assert.equal(taskStatusIs("success", "success"), true);
-    assert.equal(taskStatusIs("FAILURE", "success"), false);
-    assert.equal(taskStatusIs(undefined, "success"), false);
-  });
-});
+describe("pollConsumeTask", () => {
+  test("returns the last non-terminal task once the timeout elapses (never hangs)", async () => {
+    const api = createMockApi({
+      request: async () => page([{ task_id: "slow", status: "started" }]),
+    });
 
-describe("relatedDocumentId", () => {
-  test("reads related_document (Paperless 2.x)", () => {
-    assert.equal(relatedDocumentId({ related_document: 42 }), 42);
-    assert.equal(relatedDocumentId({ related_document: "42" }), 42);
+    // timeoutMs 0 -> exactly one poll, deadline check returns before any sleep.
+    const task = await pollConsumeTask(api, "slow", 0);
+
+    assert.equal(task?.status, "started");
   });
 
-  test("reads related_document_ids (Paperless 3.x)", () => {
-    assert.equal(relatedDocumentId({ related_document_ids: [42] }), 42);
-  });
+  test("finds the finished task in the paginated /tasks/ response", async () => {
+    const api = createMockApi({
+      request: async () =>
+        page([{ task_id: "done", status: "success", related_document_ids: [42] }]),
+    });
 
-  test("returns undefined when absent, empty, or unparseable", () => {
-    assert.equal(relatedDocumentId({}), undefined);
-    assert.equal(relatedDocumentId({ related_document: null }), undefined);
-    assert.equal(relatedDocumentId({ related_document_ids: [] }), undefined);
-    assert.equal(relatedDocumentId({ related_document: "nope" }), undefined);
-  });
-});
+    const task = await pollConsumeTask(api, "done", 0);
 
-describe("taskResult", () => {
-  test("reads result (2.x) and result_data (3.x)", () => {
-    assert.equal(taskResult({ result: "ok" }), "ok");
-    assert.equal(taskResult({ result_data: "ok" }), "ok");
-    assert.equal(taskResult({}), undefined);
+    assert.equal(task?.status, "success");
+    assert.deepEqual(task?.related_document_ids, [42]);
   });
 });
