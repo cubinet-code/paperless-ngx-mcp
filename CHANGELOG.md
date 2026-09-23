@@ -14,11 +14,12 @@ Aligns the tool surface with **Paperless-ngx 3.2** and drops support for older P
 - **Paperless error details were dropped.** Validation errors (`{"non_field_errors": ["password not specified"]}`) and plain-text errors ("AI is required for this feature") now appear in the tool error instead of a bare "status code 400". HTML error pages are still reduced to the status line.
 - **A slow Paperless response could leave a tool call hanging until the MCP client gave up.** Every JSON API call now has a 90-second overall deadline and fails with a message naming the endpoint. Downloads are exempt.
 - `list_tasks` `limit` above 25 returned only 25 tasks; it is now passed to the server as the page size.
+- `list_trash` returned the full text of every trashed document, which could overflow the model's context. Content is now left out, as in `list_documents`.
 
 ### Added
 
 - **Workflows:** `list_workflows`, `get_workflow`, `create_workflow`, `update_workflow`, `delete_workflow`. A workflow, with its nested triggers and actions, is what Paperless actually runs; standalone triggers and actions do nothing on their own (and Paperless deletes unattached ones whenever a workflow is updated). `get_workflow` output can be edited and sent straight back to `update_workflow`; `create_workflow` ignores nested ids, so copying a workflow never takes over the original's triggers. Webhook actions gain `as_json` and `include_document`.
-- **Document versions:** `upload_document_version`, `update_document_version`, `delete_document_version`, `merge_documents_as_versions`.
+- **Document versions:** `upload_document_version` (reports the document's `document_id` and the new `version_id`), `update_document_version`, `delete_document_version`, `merge_documents_as_versions`.
 - **`edit_documents_bulk`:** method `remove_password` (with `update_document: true` the unlocked file becomes a new version), `remote_ocr` for method `reprocess`, and `all` + `filters` (+ `excluded_documents`) to select every matching document, e.g. to reassign all documents of a duplicate correspondent in one call. Filter keys Paperless would silently ignore (which would select every document) are refused, invalid values are caught by a preview query, and the result reports `matched_documents`.
 - **`list_documents`:** `has_duplicates` filter.
 - **Mail:** `list/get/create/update/delete_mail_account`, `test_mail_account` (pass a saved account's `id` to test it with its stored password), `process_mail_account`, `list/get/create/update/delete_mail_rule`.
@@ -37,6 +38,7 @@ Aligns the tool surface with **Paperless-ngx 3.2** and drops support for older P
 
 ### Security
 
+- **Workflow PDF passwords no longer reach the model in clear text.** `list_workflows`, `get_workflow`, `list_workflow_actions`, `get_workflow_action` and the create/update results show the passwords of password-removal actions as `**********`. Sending the masked list back to `update_workflow` / `update_workflow_action` keeps the stored passwords; creating an action from masked passwords is refused.
 - `@modelcontextprotocol/sdk` `1.30.0` → `1.30.1` (caps JSON-RPC batches at 100 messages) and in-range transitive bumps from `npm audit fix`: `fast-uri` `3.1.5` → `3.1.8` (high: host confusion via skipped IDN canonicalization), `hono` `4.13.1` → `4.13.8` and `qs` `6.15.3` → `6.16.0` (moderate). `npm audit` is clean.
 
 ## [3.1.1] — 2026-08-11
