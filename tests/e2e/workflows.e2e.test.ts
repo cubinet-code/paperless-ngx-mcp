@@ -1,5 +1,6 @@
 import { after, before, test, describe } from "node:test";
 import assert from "node:assert/strict";
+import axios from "axios";
 import fs from "node:fs/promises";
 import path from "node:path";
 import { createHarness, type E2EHarness } from "./harness";
@@ -103,6 +104,33 @@ describe("workflows (e2e)", () => {
     assert.equal(hookOf(updated).as_json, true);
     assert.equal(hookOf(updated).include_document, true);
     assert.equal(hookOf(updated).id, hookOf(fetched).id, "webhook keeps its identity");
+  });
+
+  test("masked PDF passwords survive a get_workflow → update_workflow round trip", async () => {
+    const created = await harness.callTool<Workflow & { actions: Array<{ id: number; passwords: string[] }> }>(
+      "create_workflow",
+      {
+        name: `e2e-wf-masked-${Date.now()}`,
+        enabled: false,
+        triggers: [{ type: 2, filter_filename: "never-matches-*" }],
+        actions: [{ type: 5, passwords: ["pw-one", "pw-two"] }],
+      }
+    );
+    workflowIds.push(created.id);
+    assert.deepEqual(created.actions[0].passwords, ["**********", "**********"]);
+
+    const fetched = await harness.callTool<Workflow>("get_workflow", { id: created.id });
+    await harness.callTool("update_workflow", {
+      id: created.id,
+      triggers: fetched.triggers,
+      actions: fetched.actions,
+    });
+
+    const stored = await axios.get<{ actions: Array<{ passwords: string[] }> }>(
+      `${BASE_URL}/api/workflows/${created.id}/`,
+      { headers: { Authorization: `Token ${token}` }, timeout: 10_000 }
+    );
+    assert.deepEqual(stored.data.actions[0].passwords, ["pw-one", "pw-two"]);
   });
 
   test("create_workflow ignores trigger/action ids copied from another workflow", async () => {

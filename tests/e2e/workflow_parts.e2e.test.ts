@@ -1,5 +1,6 @@
 import { after, before, test, describe } from "node:test";
 import assert from "node:assert/strict";
+import axios from "axios";
 import { createHarness, type E2EHarness } from "./harness";
 import { ensureCustomField, findIdByName, seed } from "./setup/seed";
 
@@ -44,11 +45,32 @@ describe("workflow actions & triggers (e2e) — Paperless 3.2 fields", () => {
     return action;
   };
 
-  test("password removal (type 5) round-trips its ordered passwords list", async () => {
+  test("password removal (type 5) stores its ordered passwords but returns them masked", async () => {
     const action = await createAction({ type: 5, passwords: ["first", "second"] });
 
     assert.equal(action.type, 5);
-    assert.deepEqual(action.passwords, ["first", "second"]);
+    assert.deepEqual(action.passwords, ["**********", "**********"]);
+    const stored = await axios.get<{ passwords: string[] }>(`${BASE_URL}/api/workflow_actions/${action.id}/`, {
+      headers: { Authorization: `Token ${token}` },
+      timeout: 10_000,
+    });
+    assert.deepEqual(stored.data.passwords, ["first", "second"]);
+  });
+
+  test("update_workflow_action with the masked list keeps the stored passwords", async () => {
+    const action = await createAction({ type: 5, passwords: ["keep-me"] });
+
+    await harness.callTool("update_workflow_action", {
+      id: action.id,
+      type: 5,
+      passwords: action.passwords,
+    });
+
+    const stored = await axios.get<{ passwords: string[] }>(`${BASE_URL}/api/workflow_actions/${action.id}/`, {
+      headers: { Authorization: `Token ${token}` },
+      timeout: 10_000,
+    });
+    assert.deepEqual(stored.data.passwords, ["keep-me"]);
   });
 
   test("move to trash (6), remote OCR (7) and apply AI suggestions (8) are accepted", async () => {

@@ -97,7 +97,7 @@ export const workflowActionFields = {
     .min(1)
     .nullable()
     .optional()
-    .describe("Type 5 (required): PDF passwords to try, in order. The unlocked file is stored as a new version of the document."),
+    .describe("Type 5 (required): PDF passwords to try, in order. The unlocked file is stored as a new version of the document. Tools return them masked (\"**********\"); send a masked list back unchanged to keep the stored passwords."),
   ai_suggestion_fields: z
     .array(z.enum(["title", "tags", "correspondent", "document_type", "storage_path", "created"]))
     .min(1)
@@ -168,6 +168,55 @@ const nestedActionInput = newActionInput.extend({
   id: z.number().nullable().optional().describe("ID of an existing action to keep and modify. Omit to create a new action."),
 });
 
+// PDF passwords of password-removal actions (type 5) never reach the model in
+// clear text: tools return them masked, like Paperless does for mail passwords.
+// A masked list sent back means "keep the stored passwords".
+const PASSWORD_MASK = "**********";
+const isMask = (value: string) => /^\*+$/.test(value);
+
+interface MaskableAction {
+  id?: number | null;
+  passwords?: string[] | null;
+  [key: string]: unknown;
+}
+
+function maskAction<T>(action: T): T {
+  const a = action as MaskableAction | null;
+  if (!a || !Array.isArray(a.passwords)) return action;
+  return { ...a, passwords: a.passwords.map(() => PASSWORD_MASK) } as T;
+}
+
+function maskWorkflow<T>(workflow: T): T {
+  const w = workflow as { actions?: unknown[] } | null;
+  if (!w || !Array.isArray(w.actions)) return workflow;
+  return { ...w, actions: w.actions.map(maskAction) } as T;
+}
+
+function maskPage<T>(page: T, maskItem: <U>(item: U) => U): T {
+  const p = page as { results?: unknown[] } | null;
+  if (!p || !Array.isArray(p.results)) return page;
+  return { ...p, results: p.results.map(maskItem) } as T;
+}
+
+/** true for an all-masked list; throws for a list mixing masks and real passwords. */
+function keepsStoredPasswords(passwords: string[] | null | undefined): boolean {
+  if (!passwords?.some(isMask)) return false;
+  if (!passwords.every(isMask)) {
+    throw new Error(
+      "Mixing masked and real passwords in one action isn't supported — send the masked list back unchanged to keep the stored passwords, or send the complete new list."
+    );
+  }
+  return true;
+}
+
+function refuseMaskedPasswords(actions: MaskableAction[]): void {
+  if (actions.some((a) => a.passwords?.some(isMask))) {
+    throw new Error(
+      "Masked passwords can't be copied into a new action — Paperless only stores them on the original. Provide the real passwords."
+    );
+  }
+}
+
 export function registerWorkflowTools(server: McpServer, api: PaperlessAPI) {
   server.tool(
     "list_workflow_actions",
@@ -180,7 +229,7 @@ export function registerWorkflowTools(server: McpServer, api: PaperlessAPI) {
         `/workflow_actions/${queryString ? `?${queryString}` : ""}`
       );
       return {
-        content: [{ type: "text", text: JSON.stringify(response) }],
+        content: [{ type: "text", text: JSON.stringify(maskPage(response, maskAction)) }],
       };
     })
   );
@@ -193,7 +242,7 @@ export function registerWorkflowTools(server: McpServer, api: PaperlessAPI) {
     withErrorHandling(async (args) => {
       const response = await api.request(`/workflow_actions/${args.id}/`);
       return {
-        content: [{ type: "text", text: JSON.stringify(response) }],
+        content: [{ type: "text", text: JSON.stringify(maskAction(response)) }],
       };
     })
   );
@@ -207,12 +256,13 @@ export function registerWorkflowTools(server: McpServer, api: PaperlessAPI) {
     },
     Annotations.CREATE,
     withErrorHandling(async (args) => {
+      refuseMaskedPasswords([args]);
       const response = await api.request("/workflow_actions/", {
         method: "POST",
         body: JSON.stringify(args),
       });
       return {
-        content: [{ type: "text", text: JSON.stringify(response) }],
+        content: [{ type: "text", text: JSON.stringify(maskAction(response)) }],
       };
     })
   );
@@ -228,12 +278,18 @@ export function registerWorkflowTools(server: McpServer, api: PaperlessAPI) {
     Annotations.UPDATE,
     withErrorHandling(async (args) => {
       const { id, ...data } = args;
+      if (keepsStoredPasswords(data.passwords)) {
+        // Paperless re-validates a type-5 action on PATCH, so the stored
+        // passwords have to be sent back rather than left out.
+        const current = await api.request<MaskableAction>(`/workflow_actions/${id}/`);
+        data.passwords = current.passwords;
+      }
       const response = await api.request(`/workflow_actions/${id}/`, {
         method: "PATCH",
         body: JSON.stringify(data),
       });
       return {
-        content: [{ type: "text", text: JSON.stringify(response) }],
+        content: [{ type: "text", text: JSON.stringify(maskAction(response)) }],
       };
     })
   );
@@ -356,7 +412,7 @@ export function registerWorkflowTools(server: McpServer, api: PaperlessAPI) {
         `/workflows/${queryString ? `?${queryString}` : ""}`
       );
       return {
-        content: [{ type: "text", text: JSON.stringify(response) }],
+        content: [{ type: "text", text: JSON.stringify(maskPage(response, maskWorkflow)) }],
       };
     })
   );
@@ -369,7 +425,7 @@ export function registerWorkflowTools(server: McpServer, api: PaperlessAPI) {
     withErrorHandling(async (args) => {
       const response = await api.request(`/workflows/${args.id}/`);
       return {
-        content: [{ type: "text", text: JSON.stringify(response) }],
+        content: [{ type: "text", text: JSON.stringify(maskWorkflow(response)) }],
       };
     })
   );
@@ -386,12 +442,13 @@ export function registerWorkflowTools(server: McpServer, api: PaperlessAPI) {
     },
     Annotations.CREATE,
     withErrorHandling(async (args) => {
+      refuseMaskedPasswords(args.actions);
       const response = await api.request("/workflows/", {
         method: "POST",
         body: JSON.stringify(args),
       });
       return {
-        content: [{ type: "text", text: JSON.stringify(response) }],
+        content: [{ type: "text", text: JSON.stringify(maskWorkflow(response)) }],
       };
     })
   );
@@ -410,12 +467,25 @@ export function registerWorkflowTools(server: McpServer, api: PaperlessAPI) {
     Annotations.UPDATE,
     withErrorHandling(async (args) => {
       const { id, ...data } = args;
+      if (data.actions?.some((a) => keepsStoredPasswords(a.passwords))) {
+        const current = await api.request<{ actions: MaskableAction[] }>(`/workflows/${id}/`);
+        data.actions = data.actions.map((action) => {
+          if (!keepsStoredPasswords(action.passwords)) return action;
+          const stored = current.actions.find((a) => a.id === action.id);
+          if (!stored) {
+            throw new Error(
+              "Masked passwords can only be kept for an existing action — include the action's id from get_workflow, or provide the real passwords."
+            );
+          }
+          return { ...action, passwords: stored.passwords };
+        });
+      }
       const response = await api.request(`/workflows/${id}/`, {
         method: "PATCH",
         body: JSON.stringify(data),
       });
       return {
-        content: [{ type: "text", text: JSON.stringify(response) }],
+        content: [{ type: "text", text: JSON.stringify(maskWorkflow(response)) }],
       };
     })
   );
