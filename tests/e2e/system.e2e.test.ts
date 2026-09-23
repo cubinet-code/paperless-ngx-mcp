@@ -38,4 +38,16 @@ describe("system & task insight tools (e2e)", () => {
       /AI is required for this feature \(HTTP 400\)/
     );
   });
+
+  test("list_trash lists trashed documents without their content", async () => {
+    const { id } = await seedDocument(token, "trash-e2e");
+    await harness.callTool("delete_document", { id, confirm: true });
+
+    const trash = await harness.callTool<{ results: Array<Record<string, unknown>> }>("list_trash", { page_size: 100 });
+    const entry = trash.results.find((d) => d.id === id);
+
+    assert.ok(entry, "trashed document is listed");
+    assert.equal("content" in entry!, false);
+    await harness.callTool("empty_trash", { documents: [id], confirm: true });
+  });
 });

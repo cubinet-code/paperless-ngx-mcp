@@ -209,3 +209,23 @@ describe("task insight tools", () => {
     assert.equal(calledPath, "/tasks/summary/?days=7&task_type=consume_file");
   });
 });
+
+describe("list_trash tool", () => {
+  test("leaves out document content, like list_documents", async () => {
+    const { server, tools } = createMockServer();
+    registerSystemTools(server, createMockApi({
+      request: async () => ({
+        count: 1,
+        next: null,
+        previous: null,
+        results: [{ id: 5, title: "old scan", deleted_at: "2026-09-01", content: "x".repeat(50_000) }],
+      }),
+    }));
+
+    const result = await tools.get("list_trash")!.callback({});
+    const body = getTextContent(result) as { count: number; results: Array<Record<string, unknown>> };
+
+    assert.equal(body.count, 1);
+    assert.deepEqual(body.results[0], { id: 5, title: "old scan", deleted_at: "2026-09-01" });
+  });
+});

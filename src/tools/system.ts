@@ -159,16 +159,18 @@ export function registerSystemTools(server: McpServer, api: PaperlessAPI) {
 
   server.tool(
     "list_trash",
-    "List documents in the trash (soft-deleted documents).",
+    "List documents in the trash (soft-deleted documents). Document content is left out, as in list_documents.",
     paginationFields,
     Annotations.READ,
     withErrorHandling(async (args) => {
       const queryString = buildQueryString(args);
-      const response = await api.request(
+      const response = await api.request<PaginatedResponse<{ content?: unknown }>>(
         `/trash/${queryString ? `?${queryString}` : ""}`
       );
+      // Full OCR text for every trashed document can overflow the model's context.
+      const results = response.results.map(({ content, ...doc }) => doc);
       return {
-        content: [{ type: "text", text: JSON.stringify(response) }],
+        content: [{ type: "text", text: JSON.stringify({ ...response, results }) }],
       };
     })
   );
