@@ -58,6 +58,12 @@ Quick tool-selection guide:
 | Permanently delete a tag/correspondent/document_type system-wide | delete_tag / delete_correspondent / delete_document_type (destructive) |
 | Find documents filtered by tag/correspondent/type/date | list_documents (after looking up the relevant ID) |
 | Free-text search inside document content | search_documents |
+| Move every document from one correspondent/tag/type to another (e.g. before deleting a duplicate) | edit_documents_bulk with all: true + filters |
+| Strip a PDF password | edit_documents_bulk method remove_password (update_document: true keeps it as a new version) |
+| Add a corrected/signed/unlocked file to an existing document | upload_document_version |
+| Build an automation | create_workflow (triggers + actions in one call) |
+| Inspect or fix how mail is imported | list_mail_rules / update_mail_rule |
+| Check which Paperless version is running | get_system_status |
       `,
     }
   );

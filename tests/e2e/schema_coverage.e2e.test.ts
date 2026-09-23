@@ -243,6 +243,17 @@ const SKIPPED: Record<string, SkipEntry> = {
   "GET /api/search/": {
     reason: "global search; we use /documents/?query= instead",
   },
+
+  // Paperless 3.2 standalone document operations — same operations as
+  // edit_documents_bulk methods, which we already wrap.
+  "POST /api/documents/delete/": { reason: "same as edit_documents_bulk method delete" },
+  "POST /api/documents/edit_pdf/": { reason: "same as edit_documents_bulk method edit_pdf" },
+  "POST /api/documents/merge/": { reason: "same as edit_documents_bulk method merge" },
+  "POST /api/documents/remove_password/": { reason: "same as edit_documents_bulk method remove_password" },
+  "POST /api/documents/reprocess/": { reason: "same as edit_documents_bulk method reprocess" },
+  "POST /api/documents/rotate/": { reason: "same as edit_documents_bulk method rotate" },
+  "POST /api/documents/chat/": { reason: "streaming LLM chat UI endpoint, not a request/response tool" },
+  "GET /api/documents/{id}/root/": { reason: "maps a version id to its root; versions are always listed on the root document" },
 };
 
 interface SchemaDoc {

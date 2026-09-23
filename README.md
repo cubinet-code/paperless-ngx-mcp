@@ -3,13 +3,11 @@
 [![CI](https://github.com/cubinet-code/paperless-ngx-mcp/actions/workflows/ci.yml/badge.svg)](https://github.com/cubinet-code/paperless-ngx-mcp/actions/workflows/ci.yml)
 [![License: ISC](https://img.shields.io/badge/license-ISC-blue.svg)](LICENSE)
 
-A [Model Context Protocol](https://modelcontextprotocol.io/) server for [Paperless-NGX](https://docs.paperless-ngx.com/). Exposes the full Paperless-NGX REST API to AI assistants — documents, tags, correspondents, document types, custom fields, storage paths, saved views, share links, workflows, notes, trash, and tasks.
+A [Model Context Protocol](https://modelcontextprotocol.io/) server for [Paperless-NGX](https://docs.paperless-ngx.com/). Exposes the full Paperless-NGX REST API to AI assistants — documents, tags, correspondents, document types, custom fields, storage paths, saved views, share links and bundles, workflows, mail accounts and rules, document versions, notes, trash, and tasks.
 
 ## Compatibility
 
-Works with **Paperless-ngx 2.x and 3.x**. Where the two differ on the wire the server adapts automatically, so the same tools work against either.
-
-The package major version tracks the Paperless-ngx major it targets, which is why it goes from `0.1.6` straight to `3.0.0` — there are no `1.x` or `2.x` releases. Paperless-ngx 3.0 reworked the task API; if you are on 3.x, use `3.0.0` or later.
+Targets **Paperless-ngx 3.2** (tested against 3.2.1). Older Paperless versions are not supported — use `paperless-ngx-mcp@3.1.1` for Paperless 2.x. The package major version tracks the Paperless-ngx major it targets; there are no `1.x` or `2.x` releases.
 
 ## Quick Start
 
@@ -88,10 +86,10 @@ Things you can ask Claude (or any MCP-aware assistant):
 
 ## Available Tools
 
-The server registers tools across ten domains.
+The server registers tools across twelve domains.
 
 ### Documents
-`list_documents`, `get_document`, `get_document_content`, `search_documents`, `download_document`, `download_documents_bulk`, `get_document_thumbnail`, `get_document_preview`, `get_document_history`, `get_document_metadata`, `update_document`, `post_document`, `email_document`, `edit_documents_bulk`, `delete_document`, `search_autocomplete`, `get_document_suggestions`, `get_next_asn`
+`list_documents`, `get_document`, `get_document_content`, `search_documents`, `download_document`, `download_documents_bulk`, `get_document_thumbnail`, `get_document_preview`, `get_document_history`, `get_document_metadata`, `update_document`, `post_document`, `email_document`, `edit_documents_bulk`, `delete_document`, `search_autocomplete`, `get_document_suggestions`, `get_document_ai_suggestions`, `get_next_asn`, `upload_document_version`, `update_document_version`, `delete_document_version`, `merge_documents_as_versions`
 
 ### Tags
 `list_tags`, `get_tag`, `create_tag`, `update_tag`, `delete_tag`, `edit_tags_bulk`
@@ -112,13 +110,16 @@ The server registers tools across ten domains.
 `list_saved_views`, `get_saved_view`, `create_saved_view`, `update_saved_view`, `delete_saved_view`
 
 ### Share Links
-`list_share_links`, `list_document_share_links`, `get_share_link`, `create_share_link`, `update_share_link`, `delete_share_link`
+`list_share_links`, `list_document_share_links`, `get_share_link`, `create_share_link`, `delete_share_link`, `list_share_link_bundles`, `get_share_link_bundle`, `create_share_link_bundle`, `rebuild_share_link_bundle`, `delete_share_link_bundle`
 
 ### Workflows
-`list_workflow_actions`, `get_workflow_action`, `create_workflow_action`, `update_workflow_action`, `delete_workflow_action`, `list_workflow_triggers`, `get_workflow_trigger`, `create_workflow_trigger`, `update_workflow_trigger`, `delete_workflow_trigger`
+`list_workflows`, `get_workflow`, `create_workflow`, `update_workflow`, `delete_workflow`, `list_workflow_actions`, `get_workflow_action`, `create_workflow_action`, `update_workflow_action`, `delete_workflow_action`, `list_workflow_triggers`, `get_workflow_trigger`, `create_workflow_trigger`, `update_workflow_trigger`, `delete_workflow_trigger`
+
+### Mail
+`list_mail_accounts`, `get_mail_account`, `create_mail_account`, `update_mail_account`, `delete_mail_account`, `test_mail_account`, `process_mail_account`, `list_mail_rules`, `get_mail_rule`, `create_mail_rule`, `update_mail_rule`, `delete_mail_rule`
 
 ### System / Notes / Trash / Tasks
-`get_statistics`, `list_document_notes`, `create_document_note`, `delete_document_note`, `list_trash`, `restore_from_trash`, `empty_trash`, `list_tasks`, `acknowledge_tasks`
+`get_statistics`, `get_system_status`, `list_document_notes`, `create_document_note`, `delete_document_note`, `list_trash`, `restore_from_trash`, `empty_trash`, `list_tasks`, `list_active_tasks`, `get_task_status_counts`, `get_task_summary`, `acknowledge_tasks`
 
 ### Tool naming convention (for permission allowlists)
 
@@ -155,9 +156,9 @@ Argument:
 Perform bulk operations on multiple documents.
 
 Parameters:
-- `documents`: array of document IDs
-- `method`: one of `set_correspondent`, `set_document_type`, `set_storage_path`, `add_tag`, `remove_tag`, `modify_tags`, `modify_custom_fields`, `delete`, `reprocess`, `set_permissions`, `merge`, `split`, `rotate`, `delete_pages`, `edit_pdf`
-- Method-specific parameters: `correspondent`, `document_type`, `storage_path`, `tag`, `add_tags`, `remove_tags`, `add_custom_fields`, `remove_custom_fields`, `set_permissions`, `owner`, `merge`, `metadata_document_id`, `delete_originals`, `pages`, `degrees`, `operations`, `update_document`, `include_metadata`
+- Selection: `documents` (array of IDs), **or** `all: true` + `filters` (list_documents wire filters, e.g. `{ correspondent__id: 12 }`) with optional `excluded_documents`
+- `method`: one of `set_correspondent`, `set_document_type`, `set_storage_path`, `add_tag`, `remove_tag`, `modify_tags`, `modify_custom_fields`, `delete`, `reprocess`, `set_permissions`, `merge`, `split`, `rotate`, `delete_pages`, `edit_pdf`, `remove_password`
+- Method-specific parameters: `correspondent`, `document_type`, `storage_path`, `tag`, `add_tags`, `remove_tags`, `add_custom_fields`, `remove_custom_fields`, `set_permissions`, `owner`, `merge`, `metadata_document_id`, `delete_originals`, `pages`, `degrees`, `operations`, `update_document`, `include_metadata`, `password`, `delete_original`, `remote_ocr`
 
 ```typescript
 // Add a tag to multiple documents
@@ -181,6 +182,12 @@ edit_documents_bulk({
   add_tags: [1, 2],
   remove_tags: [3, 4],
 })
+
+// Move every document from a duplicate correspondent (12) to the canonical one (34)
+edit_documents_bulk({ all: true, filters: { correspondent__id: 12 }, method: "set_correspondent", correspondent: 34 })
+
+// Unlock a password-protected PDF, keeping the result as a new version
+edit_documents_bulk({ documents: [55], method: "remove_password", password: "…", update_document: true })
 ```
 
 #### `post_document`
@@ -283,10 +290,12 @@ npm run test:e2e       # run the e2e suite against it
 npm run test:e2e:down  # tear down and remove volumes
 ```
 
+Runs against `ghcr.io/paperless-ngx/paperless-ngx:3.2.1`.
+
 Built with:
 - [@modelcontextprotocol/sdk](https://github.com/modelcontextprotocol/typescript-sdk) — MCP server SDK
 - [zod](https://github.com/colinhacks/zod) — schema validation
-- [axios](https://github.com/axios/axios) — HTTP client (with keep-alive agents and a 60s timeout)
+- [axios](https://github.com/axios/axios) — HTTP client (with keep-alive agents, a 60s idle timeout and a 90s per-request deadline)
 
 ## API Documentation
 

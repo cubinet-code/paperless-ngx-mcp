@@ -2,6 +2,42 @@
 
 All notable changes to this project are documented here. Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/); versioning follows [SemVer](https://semver.org/spec/v2.0.0.html).
 
+## [3.2.0] — YYYY-MM-DD
+
+Aligns the tool surface with **Paperless-ngx 3.2** and drops support for older Paperless versions.
+
+### Fixed
+
+- **Workflow actions could not express 4 of the 8 action types.** `create_workflow_action` / `update_workflow_action` now accept types 5 (password removal), 6 (move to trash), 7 (remote OCR) and 8 (apply AI suggestions) with their fields (`passwords`, `ai_suggestion_fields`, `ai_create_missing`, `ai_overwrite_existing`), plus `assign_custom_fields_values` and the per-item removal lists (`remove_correspondents`, `remove_document_types`, `remove_storage_paths`, `remove_owners`, `remove_view_*`, `remove_change_*`).
+- **Workflow triggers used the legacy singular filters.** Triggers now take the any/all/not forms the web UI writes (`filter_has_all_tags`, `filter_has_not_tags`, `filter_has_any_*` / `filter_has_not_*` for correspondents, document types and storage paths) and `filter_custom_field_query`. `matching_algorithm` is limited to 0–5, the range triggers support.
+- **`list_documents` documented a `custom_field_query` syntax Paperless rejects.** The description now gives the JSON expression syntax (`["Amount", "gte", 100]`, `["AND", […]]`).
+- **Paperless error details were dropped.** Validation errors (`{"non_field_errors": ["password not specified"]}`) and plain-text errors ("AI is required for this feature") now appear in the tool error instead of a bare "status code 400". HTML error pages are still reduced to the status line.
+- **A slow Paperless response could leave a tool call hanging until the MCP client gave up.** Every JSON API call now has a 90-second overall deadline and fails with a message naming the endpoint. Downloads are exempt.
+- `list_tasks` `limit` above 25 returned only 25 tasks; it is now passed to the server as the page size.
+
+### Added
+
+- **Workflows:** `list_workflows`, `get_workflow`, `create_workflow`, `update_workflow`, `delete_workflow`. A workflow, with its nested triggers and actions, is what Paperless actually runs; standalone triggers and actions do nothing on their own.
+- **Document versions:** `upload_document_version`, `update_document_version`, `delete_document_version`, `merge_documents_as_versions`.
+- **`edit_documents_bulk`:** method `remove_password` (with `update_document: true` the unlocked file becomes a new version), `remote_ocr` for method `reprocess`, and `all` + `filters` (+ `excluded_documents`) to select every matching document, e.g. to reassign all documents of a duplicate correspondent in one call.
+- **`list_documents`:** `has_duplicates` filter.
+- **Mail:** `list/get/create/update/delete_mail_account`, `test_mail_account`, `process_mail_account`, `list/get/create/update/delete_mail_rule`.
+- **Share link bundles:** `list/get/create/rebuild/delete_share_link_bundle(s)`.
+- **System:** `get_system_status` (includes the Paperless version), `get_document_ai_suggestions`, `list_active_tasks`, `get_task_status_counts`, `get_task_summary`. `list_tasks` accepts `task_type: apply_ai_suggestions`.
+- `get_document` now explains which fields follow the latest version (content, metadata) and which describe the root (`page_count`, file names).
+
+### Changed (BREAKING)
+
+- **Paperless-ngx 2.x is no longer supported.** The 2.x compatibility code (task status casing fallback, flat `/tasks/` arrays, `related_document`/`result`) is gone. Stay on `3.1.1` for Paperless 2.x.
+- **`list_tasks` dropped the 2.x-only filters `task_name` and `type`.** Use `task_type` and `trigger_source`.
+- **`update_share_link` was removed.** Paperless has never allowed editing a share link (the endpoint only supports GET and DELETE), so every call failed with HTTP 405. Delete and recreate the link instead.
+- **Workflow triggers no longer accept `filter_has_correspondent` / `filter_has_document_type`.** Use `filter_has_any_correspondents` / `filter_has_any_document_types`.
+- **`edit_documents_bulk` `documents` is optional** when `all: true` + `filters` is given. Exactly one of the two selection forms is required.
+
+### Security
+
+- `@modelcontextprotocol/sdk` `1.30.0` → `1.30.1` (caps JSON-RPC batches at 100 messages) and in-range transitive bumps from `npm audit fix`: `fast-uri` `3.1.5` → `3.1.8` (high: host confusion via skipped IDN canonicalization), `hono` `4.13.1` → `4.13.8` and `qs` `6.15.3` → `6.16.0` (moderate). `npm audit` is clean.
+
 ## [3.1.1] — 2026-08-11
 
 ### Security
