@@ -25,6 +25,7 @@ Aligns the tool surface with **Paperless-ngx 3.2** and drops support for older P
 - **Share link bundles:** `list/get/create/rebuild/delete_share_link_bundle(s)`.
 - **System:** `get_system_status` (includes the Paperless version), `get_document_ai_suggestions`, `list_active_tasks`, `get_task_status_counts`, `get_task_summary`. `list_tasks` accepts `task_type: apply_ai_suggestions`.
 - `get_document` now explains which fields follow the latest version (content, metadata) and which describe the root (`page_count`, file names).
+- **Distribution:** the release workflow now also publishes a Docker image to `ghcr.io/cubinet-code/paperless-ngx-mcp` (linux/amd64 and linux/arm64; stdio by default, `--http` for Streamable HTTP), attaches a Claude Desktop extension (`paperless-ngx-mcp.mcpb`) to each GitHub Release, and lists the server in the official MCP Registry as `io.github.cubinet-code/paperless-ngx-mcp`.
 
 ### Changed (BREAKING)
 

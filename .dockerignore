@@ -1,0 +1,10 @@
+node_modules
+build
+tests
+docs
+.git
+.github
+.env
+.env.*
+*.log
+*.mcpb

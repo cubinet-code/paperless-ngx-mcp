@@ -1,0 +1,19 @@
+# Patterns are anchored with a leading slash so they don't also strip
+# same-named directories inside node_modules (e.g. debug/src).
+/src/
+/tests/
+/docs/
+/.github/
+/.claude/
+/.superpowers/
+/build/**/*.d.ts
+/build/.tsbuildinfo
+/Dockerfile
+/.dockerignore
+/docker-compose*.yml
+/server.json
+/tsconfig.json
+/CHANGELOG.md
+/CLAUDE.md
+/package-lock.json
+*.mcpb

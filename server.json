@@ -1,0 +1,40 @@
+{
+  "$schema": "https://static.modelcontextprotocol.io/schemas/2025-12-11/server.schema.json",
+  "name": "io.github.cubinet-code/paperless-ngx-mcp",
+  "title": "Paperless-ngx",
+  "description": "Full Paperless-ngx API for AI assistants: search, tag, edit and upload documents, workflows and more",
+  "repository": {
+    "url": "https://github.com/cubinet-code/paperless-ngx-mcp",
+    "source": "github"
+  },
+  "websiteUrl": "https://github.com/cubinet-code/paperless-ngx-mcp#readme",
+  "version": "3.2.0",
+  "packages": [
+    {
+      "registryType": "npm",
+      "identifier": "paperless-ngx-mcp",
+      "version": "3.2.0",
+      "runtimeHint": "npx",
+      "transport": {
+        "type": "stdio"
+      },
+      "environmentVariables": [
+        {
+          "name": "PAPERLESS_URL",
+          "description": "Base URL of your Paperless-ngx instance, e.g. https://paperless.example.com",
+          "isRequired": true
+        },
+        {
+          "name": "PAPERLESS_API_KEY",
+          "description": "Paperless-ngx API token (My Profile → generate token)",
+          "isRequired": true,
+          "isSecret": true
+        },
+        {
+          "name": "PAPERLESS_PUBLIC_URL",
+          "description": "Public URL used for browser links to documents. Defaults to PAPERLESS_URL."
+        }
+      ]
+    }
+  ]
+}

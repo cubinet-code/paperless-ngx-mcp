@@ -2,8 +2,20 @@
 
 [![CI](https://github.com/cubinet-code/paperless-ngx-mcp/actions/workflows/ci.yml/badge.svg)](https://github.com/cubinet-code/paperless-ngx-mcp/actions/workflows/ci.yml)
 [![License: ISC](https://img.shields.io/badge/license-ISC-blue.svg)](LICENSE)
+[![npm](https://img.shields.io/npm/v/paperless-ngx-mcp)](https://www.npmjs.com/package/paperless-ngx-mcp)
+[![npm downloads](https://img.shields.io/npm/dm/paperless-ngx-mcp)](https://www.npmjs.com/package/paperless-ngx-mcp)
 
 A [Model Context Protocol](https://modelcontextprotocol.io/) server for [Paperless-NGX](https://docs.paperless-ngx.com/). Exposes the full Paperless-NGX REST API to AI assistants — documents, tags, correspondents, document types, custom fields, storage paths, saved views, share links and bundles, workflows, mail accounts and rules, document versions, notes, trash, and tasks.
+
+![Claude Code triaging a Paperless-ngx inbox with paperless-ngx-mcp](assets/demo.gif)
+
+## Why this one?
+
+- **Complete, and it stays that way.** A CI test checks every endpoint in Paperless's `/api/schema/` against the tools here and fails when upstream adds one that is neither wrapped nor deliberately skipped.
+- **Tested against real Paperless.** The end-to-end suite runs the tools against a live Paperless-ngx 3.2.1 container, not mocks.
+- **Asks before it breaks things.** Every `delete_*` tool and `empty_trash` require `confirm: true`, and the [`triage_inbox`](#triage_inbox) prompt proposes changes and waits for your go-ahead before writing anything.
+- **Easy to allowlist.** Verb-first tool names (`list_*`, `get_*`, `delete_*`, …) group into [one permission wildcard each](#tool-naming-convention-for-permission-allowlists).
+- **Install it your way:** `npx`, a Docker image, a one-click Claude Desktop extension, or the official MCP Registry.
 
 ## Compatibility
 
@@ -35,9 +47,16 @@ codex mcp add paperless \
 
 This writes the entry to `~/.codex/config.toml`.
 
+### Claude Desktop (extension)
+
+Download [`paperless-ngx-mcp.mcpb`](https://github.com/cubinet-code/paperless-ngx-mcp/releases/latest/download/paperless-ngx-mcp.mcpb) from the latest release and double-click it, or install it from **Settings → Extensions**. Claude Desktop asks for your Paperless URL and API token.
+
 ### Claude Desktop, Cursor, Cline, and other MCP clients
 
-Add this to your client's MCP config file (e.g. `claude_desktop_config.json`, `~/.cursor/mcp.json`, `~/.config/cline/mcp.json`):
+[![Add to Cursor](https://cursor.com/deeplink/mcp-install-dark.svg)](https://cursor.com/en/install-mcp?name=paperless&config=eyJjb21tYW5kIjoibnB4IiwiYXJncyI6WyIteSIsInBhcGVybGVzcy1uZ3gtbWNwIl0sImVudiI6eyJQQVBFUkxFU1NfVVJMIjoiaHR0cHM6Ly95b3VyLXBhcGVybGVzcy1pbnN0YW5jZSIsIlBBUEVSTEVTU19BUElfS0VZIjoieW91ci1hcGktdG9rZW4ifX0%3D)
+[![Install in VS Code](https://img.shields.io/badge/VS_Code-Install_Server-0098FF?style=flat-square&logo=visualstudiocode&logoColor=white)](https://insiders.vscode.dev/redirect/mcp/install?name=paperless&config=%7B%22command%22%3A%22npx%22%2C%22args%22%3A%5B%22-y%22%2C%22paperless-ngx-mcp%22%5D%2C%22env%22%3A%7B%22PAPERLESS_URL%22%3A%22https%3A%2F%2Fyour-paperless-instance%22%2C%22PAPERLESS_API_KEY%22%3A%22your-api-token%22%7D%7D)
+
+The buttons install placeholder values; replace `PAPERLESS_URL` and `PAPERLESS_API_KEY` afterwards. Or add this to your client's MCP config file (e.g. `claude_desktop_config.json`, `~/.cursor/mcp.json`, `~/.config/cline/mcp.json`):
 
 ```json
 {
@@ -53,6 +72,34 @@ Add this to your client's MCP config file (e.g. `claude_desktop_config.json`, `~
     }
   }
 }
+```
+
+### Docker
+
+A multi-arch image (amd64, arm64) is published to `ghcr.io/cubinet-code/paperless-ngx-mcp`. As a stdio server in any MCP client config:
+
+```json
+{
+  "mcpServers": {
+    "paperless": {
+      "command": "docker",
+      "args": ["run", "-i", "--rm", "-e", "PAPERLESS_URL", "-e", "PAPERLESS_API_KEY", "ghcr.io/cubinet-code/paperless-ngx-mcp"],
+      "env": {
+        "PAPERLESS_URL": "https://your-paperless-instance",
+        "PAPERLESS_API_KEY": "your-api-token"
+      }
+    }
+  }
+}
+```
+
+Or as a long-running [Streamable HTTP](#http-streamable-http-transport) server. It has no authentication, so keep it off untrusted networks:
+
+```bash
+docker run -d -p 127.0.0.1:3000:3000 \
+  -e PAPERLESS_URL=https://your-paperless-instance \
+  -e PAPERLESS_API_KEY=your-api-token \
+  ghcr.io/cubinet-code/paperless-ngx-mcp --http --port 3000
 ```
 
 ### Get your Paperless-NGX API token

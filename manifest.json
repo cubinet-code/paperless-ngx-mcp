@@ -1,0 +1,53 @@
+{
+  "manifest_version": "0.3",
+  "name": "paperless-ngx-mcp",
+  "display_name": "Paperless-ngx",
+  "version": "3.2.0",
+  "description": "Search, tag, edit and upload documents in your Paperless-ngx instance.",
+  "long_description": "Exposes the Paperless-ngx REST API to Claude: documents, tags, correspondents, document types, custom fields, storage paths, saved views, share links, workflows, notes, trash and tasks. Includes a `triage_inbox` prompt that proposes metadata for inbox documents and applies it after you confirm.",
+  "author": {
+    "name": "Oliver Fueckert",
+    "url": "https://github.com/cubinet-code"
+  },
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/cubinet-code/paperless-ngx-mcp"
+  },
+  "homepage": "https://github.com/cubinet-code/paperless-ngx-mcp",
+  "support": "https://github.com/cubinet-code/paperless-ngx-mcp/issues",
+  "license": "ISC",
+  "keywords": ["paperless", "paperless-ngx", "documents", "dms", "ocr"],
+  "server": {
+    "type": "node",
+    "entry_point": "build/index.js",
+    "mcp_config": {
+      "command": "node",
+      "args": ["${__dirname}/build/index.js"],
+      "env": {
+        "PAPERLESS_URL": "${user_config.paperless_url}",
+        "PAPERLESS_API_KEY": "${user_config.paperless_api_key}"
+      }
+    }
+  },
+  "user_config": {
+    "paperless_url": {
+      "type": "string",
+      "title": "Paperless-ngx URL",
+      "description": "Base URL of your Paperless-ngx instance, e.g. https://paperless.example.com",
+      "required": true
+    },
+    "paperless_api_key": {
+      "type": "string",
+      "title": "API token",
+      "description": "In Paperless-ngx: your username (top right) → My Profile → generate token.",
+      "sensitive": true,
+      "required": true
+    }
+  },
+  "compatibility": {
+    "platforms": ["darwin", "win32", "linux"],
+    "runtimes": {
+      "node": ">=24.0.0"
+    }
+  }
+}
