@@ -32,12 +32,38 @@ export function registerSystemTools(server: McpServer, api: PaperlessAPI) {
   );
 
   server.tool(
+    "get_system_status",
+    "Get Paperless server status: the Paperless-ngx version (pngx_version), install type, storage, and the health of the database, search index, classifier, task queue and last sanity check. Use this to find out which Paperless version you are talking to.",
+    {},
+    Annotations.READ,
+    withErrorHandling(async () => {
+      const response = await api.request("/status/");
+      return {
+        content: [{ type: "text", text: JSON.stringify(response) }],
+      };
+    })
+  );
+
+  server.tool(
     "get_document_suggestions",
-    "Get AI-powered suggestions for a document's correspondent, tags, and document type based on its content.",
+    "Get classifier-based suggestions for a document's correspondent, tags, document type, storage path and dates. Returns IDs of EXISTING objects only. For LLM suggestions that can also propose a title and new objects, use get_document_ai_suggestions.",
     { id: z.number().describe("The document ID to get suggestions for") },
     Annotations.READ,
     withErrorHandling(async (args) => {
       const response = await api.request(`/documents/${args.id}/suggestions/`);
+      return {
+        content: [{ type: "text", text: JSON.stringify(response) }],
+      };
+    })
+  );
+
+  server.tool(
+    "get_document_ai_suggestions",
+    "Get LLM-based suggestions for a document: a title, existing correspondents/tags/document types/storage paths (IDs), and suggested_* NAMES for objects that don't exist yet, plus dates. Requires AI to be enabled in Paperless — otherwise it fails with 'AI is required for this feature'. For classifier suggestions that work without AI, use get_document_suggestions.",
+    { id: z.number().describe("The document ID") },
+    Annotations.READ,
+    withErrorHandling(async (args) => {
+      const response = await api.request(`/documents/${args.id}/ai_suggestions/`);
       return {
         content: [{ type: "text", text: JSON.stringify(response) }],
       };
@@ -225,7 +251,7 @@ export function registerSystemTools(server: McpServer, api: PaperlessAPI) {
 
   server.tool(
     "list_tasks",
-    "List background tasks with their status, type, trigger source and results. Useful for monitoring document consumption and other async operations. Use the filters to narrow the list; `limit` sets how many are returned.",
+    "List background tasks with their status, type, trigger source and results. Useful for monitoring document consumption and other async operations. Use the filters to narrow the list; `limit` sets how many are returned. For only pending/running tasks use list_active_tasks; for totals use get_task_status_counts or get_task_summary.",
     {
       status: z.enum(["pending", "started", "success", "failure", "revoked"]).optional().describe("Filter by task state"),
       task_type: z.enum(["consume_file", "train_classifier", "sanity_check", "index_optimize", "mail_fetch", "llm_index", "empty_trash", "check_workflows", "bulk_update", "reprocess_document", "build_share_link", "bulk_delete", "apply_ai_suggestions"]).optional().describe("Filter by task type"),
@@ -259,6 +285,56 @@ export function registerSystemTools(server: McpServer, api: PaperlessAPI) {
         method: "POST",
         body: JSON.stringify({ tasks: args.tasks }),
       });
+      return {
+        content: [{ type: "text", text: JSON.stringify(response) }],
+      };
+    })
+  );
+
+  server.tool(
+    "list_active_tasks",
+    "List tasks that are pending or running right now (at most 50). For finished tasks use list_tasks.",
+    {
+      task_type: z.string().optional().describe("Filter by task type, e.g. consume_file"),
+    },
+    Annotations.READ,
+    withErrorHandling(async (args) => {
+      const queryString = buildQueryString(args);
+      const response = await api.request(
+        `/tasks/active/${queryString ? `?${queryString}` : ""}`
+      );
+      return {
+        content: [{ type: "text", text: JSON.stringify(response) }],
+      };
+    })
+  );
+
+  server.tool(
+    "get_task_status_counts",
+    "Get task counts: all, needs_attention (failed and unacknowledged), in_progress, completed.",
+    {},
+    Annotations.READ,
+    withErrorHandling(async () => {
+      const response = await api.request("/tasks/status_counts/");
+      return {
+        content: [{ type: "text", text: JSON.stringify(response) }],
+      };
+    })
+  );
+
+  server.tool(
+    "get_task_summary",
+    "Get per-task-type statistics over the last N days: totals, pending/success/failure counts, average duration and wait time, and last run/success/failure times.",
+    {
+      days: z.number().int().min(1).optional().describe("Look-back window in days (default 30)"),
+      task_type: z.string().optional().describe("Limit to one task type, e.g. consume_file"),
+    },
+    Annotations.READ,
+    withErrorHandling(async (args) => {
+      const queryString = buildQueryString(args);
+      const response = await api.request(
+        `/tasks/summary/${queryString ? `?${queryString}` : ""}`
+      );
       return {
         content: [{ type: "text", text: JSON.stringify(response) }],
       };

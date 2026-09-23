@@ -192,3 +192,20 @@ describe("list_tasks tool", () => {
   });
 });
 
+
+describe("task insight tools", () => {
+  test("get_task_summary forwards days and task_type", async () => {
+    let calledPath = "";
+    const { server, tools } = createMockServer();
+    registerSystemTools(server, createMockApi({
+      request: async (path: string) => {
+        calledPath = path;
+        return [];
+      },
+    }));
+
+    await tools.get("get_task_summary")!.callback({ days: 7, task_type: "consume_file" });
+
+    assert.equal(calledPath, "/tasks/summary/?days=7&task_type=consume_file");
+  });
+});

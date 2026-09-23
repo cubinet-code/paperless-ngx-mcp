@@ -72,6 +72,7 @@ const WRAPPED = new Set<string>([
   "DELETE /api/documents/{id}/notes/",
   "GET /api/documents/{id}/preview/",
   "GET /api/documents/{id}/share_links/",
+  "GET /api/documents/{id}/ai_suggestions/",
   "GET /api/documents/{id}/suggestions/",
   "GET /api/documents/{id}/thumb/",
   "POST /api/documents/{id}/update_version/",
@@ -97,6 +98,9 @@ const WRAPPED = new Set<string>([
   // statistics
   "GET /api/statistics/",
 
+  // status
+  "GET /api/status/",
+
   // storage_paths
   "GET /api/storage_paths/",
   "POST /api/storage_paths/",
@@ -115,6 +119,9 @@ const WRAPPED = new Set<string>([
   // tasks
   "GET /api/tasks/",
   "POST /api/tasks/acknowledge/",
+  "GET /api/tasks/active/",
+  "GET /api/tasks/status_counts/",
+  "GET /api/tasks/summary/",
 
   // trash
   "GET /api/trash/",
@@ -164,7 +171,6 @@ const SKIPPED: Record<string, SkipEntry> = {
   "GET /api/logs/": { reason: "server logs" },
   "GET /api/logs/{id}/": { reason: "server logs" },
   "GET /api/remote_version/": { reason: "server version probe" },
-  "GET /api/status/": { reason: "server health probe" },
   "POST /api/tasks/run/": { reason: "admin task trigger" },
   "GET /api/tasks/{id}/": { reason: "covered by list_tasks" },
   "POST /api/token/": { reason: "auth token mint, not a user-facing tool" },
