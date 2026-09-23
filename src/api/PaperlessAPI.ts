@@ -20,7 +20,7 @@ import {
   StoragePath,
   Tag,
 } from "./types";
-import { headersToObject } from "./utils";
+import { describeErrorBody, headersToObject } from "./utils";
 
 const httpAgent = new HttpAgent({
   keepAlive: true,
@@ -39,6 +39,15 @@ export const client = axios.create({
   httpsAgent,
 });
 
+/**
+ * Hard ceiling on one JSON API call, connect to last byte. `client.timeout`
+ * only fires after 60s of socket *inactivity*, so a response that keeps
+ * trickling in can outlive it; this bounds the whole call so an agent gets an
+ * error instead of silence. Binary downloads (`requestRaw`) are exempt — a
+ * large ZIP can legitimately take longer.
+ */
+export const REQUEST_DEADLINE_MS = 90_000;
+
 export interface PostDocumentMetadata {
   title?: string;
   created?: string;
@@ -53,7 +62,8 @@ export interface PostDocumentMetadata {
 export class PaperlessAPI {
   constructor(
     private readonly baseUrl: string,
-    private readonly token: string
+    private readonly token: string,
+    private readonly deadlineMs: number = REQUEST_DEADLINE_MS
   ) {}
 
   async request<T = unknown>(path: string, options: RequestInit = {}): Promise<T> {
@@ -68,28 +78,35 @@ export class PaperlessAPI {
       ...headersToObject(options.headers),
     };
 
+    const method = options.method || "GET";
     try {
       const response = await client<T>({
         url,
-        method: options.method || "GET",
+        method,
         headers: mergedHeaders,
         data: options.body,
+        signal: AbortSignal.timeout(this.deadlineMs),
       });
       return response.data;
     } catch (error: unknown) {
-      if (axios.isAxiosError(error)) {
-        const status = error.response?.status;
-        const responseData = error.response?.data as
-          | Record<string, unknown>
-          | undefined;
-        const detail =
-          responseData?.detail || responseData?.error || responseData?.message;
-        const parts = [detail || error.message];
-        if (status) parts.push(`(HTTP ${status})`);
-        throw new Error(parts.join(" "));
-      }
-      throw error;
+      throw this.toError(error, method, path);
     }
+  }
+
+  private toError(error: unknown, method: string, path: string): Error {
+    if (axios.isCancel(error)) {
+      return new Error(
+        `Paperless did not finish responding within ${this.deadlineMs / 1000}s (${method} ${path}). ` +
+          "Retry with a smaller page_size or narrower filters; if it keeps happening, check the Paperless server's load and logs."
+      );
+    }
+    if (axios.isAxiosError(error)) {
+      const status = error.response?.status;
+      const parts = [describeErrorBody(error.response?.data) || error.message];
+      if (status) parts.push(`(HTTP ${status})`);
+      return new Error(parts.join(" "));
+    }
+    return error instanceof Error ? error : new Error(String(error));
   }
 
   async bulkEditDocuments(

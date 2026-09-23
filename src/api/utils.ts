@@ -48,3 +48,23 @@ export function enhanceMatchingAlgorithmArray<
 >(objects: T[]): (T & { matching_algorithm: NamedItem })[] {
   return objects.map((obj) => enhanceMatchingAlgorithm(obj));
 }
+
+/**
+ * Turns a Paperless error body into one line. DRF sends `{detail}` for most
+ * errors but `{field: [msg]}` / `{non_field_errors: [msg]}` for validation
+ * failures, and some views answer in plain text ("AI is required for this
+ * feature"). Django's HTML error pages carry nothing useful and are dropped.
+ */
+export function describeErrorBody(data: unknown): string | undefined {
+  if (typeof data === "string") {
+    const text = data.trim();
+    return text && !text.startsWith("<") ? text.slice(0, 500) : undefined;
+  }
+  if (!data || typeof data !== "object") return undefined;
+  const record = data as Record<string, unknown>;
+  for (const key of ["detail", "error", "message"]) {
+    if (typeof record[key] === "string") return record[key] as string;
+  }
+  const json = JSON.stringify(record);
+  return json === "{}" ? undefined : json.slice(0, 500);
+}
