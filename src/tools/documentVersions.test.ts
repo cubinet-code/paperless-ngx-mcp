@@ -26,6 +26,36 @@ describe("upload_document_version", () => {
     assert.deepEqual(getTextContent(result), { task_id: "task-123" });
   });
 
+  test("poll:true reports the document id and the new version's id separately", async () => {
+    // Paperless's task result calls the new version `document_id`; passing that
+    // through made it look like a different document.
+    const api = createMockApi({
+      uploadDocumentVersion: async () => '"task-9"',
+      request: async () => ({
+        count: 1,
+        next: null,
+        previous: null,
+        results: [{ task_id: "task-9", status: "success", result_data: { document_id: 1813 } }],
+      }),
+    });
+    const { server, tools } = createMockServer();
+    registerDocumentVersionTools(server, api);
+
+    const result = await tools.get("upload_document_version")!.callback({
+      id: 1811,
+      file: Buffer.from("pdf-bytes").toString("base64"),
+      filename: "v2.pdf",
+      poll: true,
+    });
+
+    assert.deepEqual(getTextContent(result), {
+      task_id: "task-9",
+      status: "success",
+      document_id: 1811,
+      version_id: 1813,
+    });
+  });
+
   test("rejects invalid base64 and unreadable paths without calling the API", async () => {
     let called = false;
     const api = createMockApi({

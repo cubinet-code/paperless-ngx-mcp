@@ -44,6 +44,16 @@ export function registerDocumentVersionTools(server: McpServer, api: PaperlessAP
           message: `Processing did not finish within ${timeoutMs / 1000}s. Use list_tasks with this task_id to keep tracking.`,
         });
       }
+      if (task.status === "success") {
+        // Paperless's task result names the new version `document_id`.
+        const versionId = (task.result_data as { document_id?: number } | null)?.document_id;
+        return json({
+          task_id: taskUuid,
+          status: task.status,
+          document_id: args.id,
+          version_id: versionId,
+        });
+      }
       return json({ task_id: taskUuid, status: task.status, result: task.result_data });
     })
   );

@@ -15,7 +15,7 @@ const mailAccountFields = {
   username: z.string().max(256),
   password: z
     .string()
-    .describe("IMAP password or OAuth token. Write-only: Paperless always returns it masked as \"**********\", and sending that mask back leaves the stored password unchanged."),
+    .describe("IMAP password or OAuth token. Write-only: Paperless returns it masked as all asterisks (at least 10, one per character), and sending any all-asterisks value back leaves the stored password unchanged."),
   character_set: z.string().max(256).optional().describe("e.g. UTF-8 (default) or US-ASCII"),
   is_token: z.boolean().optional().describe("true when `password` is an OAuth/app token"),
   account_type: z.number().int().min(1).max(3).optional().describe("1=IMAP, 2=Gmail OAuth, 3=Outlook OAuth"),
@@ -136,7 +136,7 @@ export function registerMailTools(server: McpServer, api: PaperlessAPI) {
 
   server.tool(
     "test_mail_account",
-    "Test IMAP connection settings without saving them. Pass the full account fields. To test a SAVED account, pass its `id` together with the masked password \"**********\" from get_mail_account — Paperless then uses the stored password (without `id` it would try the literal asterisks and report a login failure). Note: Paperless 3.2 answers an unreachable server or refused connection with a bare HTTP 500 rather than a message — treat a 500 as 'could not connect'.",
+    "Test IMAP connection settings without saving them. Pass the full account fields. To test a SAVED account, pass its `id` together with the masked password exactly as get_mail_account returns it (all asterisks) — Paperless then uses the stored password (without `id` it would try the literal asterisks and report a login failure). Note: Paperless 3.2 answers an unreachable server or refused connection with a bare HTTP 500 rather than a message — treat a 500 as 'could not connect'.",
     {
       id: z.number().optional().describe("ID of a saved account whose stored password should be used"),
       ...mailAccountFields,
