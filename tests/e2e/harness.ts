@@ -4,6 +4,7 @@ import { PaperlessAPI } from "../../src/api/PaperlessAPI";
 import { registerCorrespondentTools } from "../../src/tools/correspondents";
 import { registerCustomFieldTools } from "../../src/tools/customFields";
 import { registerDocumentTools } from "../../src/tools/documents";
+import { registerDocumentVersionTools } from "../../src/tools/documentVersions";
 import { registerDocumentTypeTools } from "../../src/tools/documentTypes";
 import { registerSavedViewTools } from "../../src/tools/savedViews";
 import { registerShareLinkTools } from "../../src/tools/shareLinks";
@@ -42,6 +43,7 @@ export function createHarness(baseUrl: string, token: string): E2EHarness {
   };
 
   registerDocumentTools(server, api);
+  registerDocumentVersionTools(server, api);
   registerTagTools(server, api);
   registerCorrespondentTools(server, api);
   registerDocumentTypeTools(server, api);

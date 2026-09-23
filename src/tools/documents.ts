@@ -1,5 +1,3 @@
-import fs from "node:fs/promises";
-import path from "node:path";
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp";
 import { z } from "zod";
 import { convertDocsWithNames } from "../api/documentEnhancer";
@@ -8,6 +6,7 @@ import { BulkEditParameters, Document } from "../api/types";
 import { Annotations } from "./utils/annotations";
 import { CUSTOM_FIELD_QUERY_DESCRIPTION, CUSTOM_FIELD_VALUE_DESCRIPTION } from "./utils/descriptions";
 import { arrayNotEmpty } from "./utils/empty";
+import { FILE_INPUT_DESCRIPTION, readFileInput } from "./utils/fileInput";
 import { withErrorHandling } from "./utils/middlewares";
 import { validateCustomFields } from "./utils/monetary";
 import { isTerminalTaskStatus, pollConsumeTask } from "./utils/tasks";
@@ -17,12 +16,6 @@ import {
 } from "./utils/responses";
 import { buildQueryString } from "./utils/queryString";
 import { paginationFields, permissionsSchema } from "./utils/schemas";
-
-const BASE64_REGEX = /^[A-Za-z0-9+/]+={0,2}$/;
-
-function isLikelyBase64(value: string): boolean {
-  return value.length > 0 && value.length % 4 === 0 && BASE64_REGEX.test(value);
-}
 
 function getContentDispositionHeader(headers: unknown): string | null {
   if (!headers || typeof headers !== "object") return null;
@@ -220,7 +213,7 @@ export function registerDocumentTools(server: McpServer, api: PaperlessAPI) {
     "post_document",
     "Upload a new document file (PDF, image, etc.) to Paperless-NGX with optional metadata. Upload is asynchronous: by default returns a task UUID (use list_tasks to track consumer progress) — the actual document ID is assigned only after the consumer has processed the file. Set poll=true to wait for the consumer to finish and return the final result (the new document_id on success, or the consumer error on failure) in a single call. Optional metadata: title, created (date), correspondent, document_type, storage_path, tags, archive_serial_number, custom_fields.",
     {
-      file: z.string().describe("Base64-encoded file content (the universal method — works for any deployment, since the bytes travel over the wire). Alternatively, an absolute file path (e.g. /tmp/invoice.pdf) that the server reads from its OWN filesystem — this only works when the server runs on the same machine as the file (local/stdio deployments). For a remote server, the path option will fail; use base64 instead."),
+      file: z.string().describe(FILE_INPUT_DESCRIPTION),
       filename: z.string().describe("Original filename including extension (e.g. 'invoice.pdf')"),
       title: z.string().optional(),
       created: z.string().optional(),
@@ -249,26 +242,7 @@ export function registerDocumentTools(server: McpServer, api: PaperlessAPI) {
     Annotations.CREATE,
     withErrorHandling(async (args) => {
       const { file, filename, poll, poll_timeout_seconds, ...metadata } = args;
-      let document: Buffer;
-      if (path.isAbsolute(file)) {
-        try {
-          document = await fs.readFile(file);
-        } catch (err) {
-          const reason = err instanceof Error ? err.message : String(err);
-          throw new Error(
-            `Could not read '${file}' from the server's filesystem (${reason}). ` +
-              "The absolute-path option only works when this MCP server runs on the same machine as the file. " +
-              "If the server is remote, pass the file as base64-encoded content instead."
-          );
-        }
-      } else {
-        if (!isLikelyBase64(file)) {
-          throw new Error(
-            "Invalid input: provide a valid base64 string or an absolute file path."
-          );
-        }
-        document = Buffer.from(file, "base64");
-      }
+      const document = await readFileInput(file);
 
       const cleanedMetadata = Object.fromEntries(
         Object.entries(metadata).filter(([, v]) => v !== undefined)

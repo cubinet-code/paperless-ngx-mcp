@@ -57,6 +57,7 @@ const WRAPPED = new Set<string>([
   "POST /api/documents/bulk_edit/",
   "POST /api/documents/post_document/",
   "GET /api/documents/next_asn/",
+  "POST /api/documents/merge_as_versions/",
 
   // documents/{id}/* (per-document)
   "GET /api/documents/{id}/",
@@ -73,6 +74,9 @@ const WRAPPED = new Set<string>([
   "GET /api/documents/{id}/share_links/",
   "GET /api/documents/{id}/suggestions/",
   "GET /api/documents/{id}/thumb/",
+  "POST /api/documents/{id}/update_version/",
+  "PATCH /api/documents/{id}/versions/{version_id}/",
+  "DELETE /api/documents/{id}/versions/{version_id}/",
 
   // saved_views
   "GET /api/saved_views/",

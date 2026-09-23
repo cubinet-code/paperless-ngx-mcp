@@ -170,6 +170,33 @@ export class PaperlessAPI {
     return response.data;
   }
 
+  async uploadDocumentVersion(
+    id: number,
+    document: Buffer,
+    filename: string,
+    versionLabel?: string
+  ): Promise<string> {
+    const formData = new FormData();
+    formData.append("document", document, { filename });
+    if (versionLabel) formData.append("version_label", versionLabel);
+    const path = `/documents/${id}/update_version/`;
+    try {
+      const response = await client.post<string>(
+        `${this.baseUrl}/api${path}`,
+        formData,
+        {
+          headers: {
+            Authorization: `Token ${this.token}`,
+            ...formData.getHeaders(),
+          },
+        }
+      );
+      return response.data;
+    } catch (error: unknown) {
+      throw this.toError(error, "POST", path);
+    }
+  }
+
   async getDocuments(query = ""): Promise<DocumentsResponse> {
     return this.request<DocumentsResponse>(`/documents/${query}`);
   }

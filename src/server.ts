@@ -3,6 +3,7 @@ import { PaperlessAPI } from "./api/PaperlessAPI";
 import { registerCorrespondentTools } from "./tools/correspondents";
 import { registerCustomFieldTools } from "./tools/customFields";
 import { registerDocumentTools } from "./tools/documents";
+import { registerDocumentVersionTools } from "./tools/documentVersions";
 import { registerDocumentTypeTools } from "./tools/documentTypes";
 import { registerPrompts } from "./tools/prompts";
 import { registerSavedViewTools } from "./tools/savedViews";
@@ -61,6 +62,7 @@ Quick tool-selection guide:
   );
 
   registerDocumentTools(server, api);
+  registerDocumentVersionTools(server, api);
   registerTagTools(server, api);
   registerCorrespondentTools(server, api);
   registerDocumentTypeTools(server, api);
