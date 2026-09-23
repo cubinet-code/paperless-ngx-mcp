@@ -28,11 +28,13 @@ describe("workflow actions & triggers (e2e) — Paperless 3.2 fields", () => {
   });
 
   after(async () => {
+    // Paperless prunes unattached actions/triggers on any workflow update, so
+    // some of these may already be gone.
     for (const id of actionIds) {
-      await harness.callTool("delete_workflow_action", { id, confirm: true });
+      await harness.callTool("delete_workflow_action", { id, confirm: true }).catch(() => {});
     }
     for (const id of triggerIds) {
-      await harness.callTool("delete_workflow_trigger", { id, confirm: true });
+      await harness.callTool("delete_workflow_trigger", { id, confirm: true }).catch(() => {});
     }
   });
 

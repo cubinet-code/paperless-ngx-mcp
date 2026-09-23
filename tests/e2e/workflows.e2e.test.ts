@@ -74,6 +74,68 @@ describe("workflows (e2e)", () => {
     await assert.rejects(() => harness.callTool("get_workflow", { id: created.id }), /HTTP 404/);
   });
 
+  test("get_workflow output round-trips through update_workflow unchanged (webhook settings kept)", async () => {
+    const created = await harness.callTool<Workflow>("create_workflow", {
+      name: `e2e-wf-roundtrip-${Date.now()}`,
+      enabled: false,
+      triggers: [{ type: 2, filter_filename: "never-matches-*" }],
+      actions: [
+        { type: 1, assign_title: "kept" },
+        {
+          type: 4,
+          webhook: { url: "https://example.invalid/hook", as_json: true, include_document: true },
+        },
+      ],
+    });
+    workflowIds.push(created.id);
+
+    const fetched = await harness.callTool<Workflow>("get_workflow", { id: created.id });
+    const updated = await harness.callTool<Workflow>("update_workflow", {
+      id: created.id,
+      triggers: fetched.triggers,
+      actions: fetched.actions,
+    });
+
+    type Hook = { id: number; as_json: boolean; include_document: boolean };
+    const hookOf = (w: Workflow) =>
+      (w.actions.find((a) => a.type === 4) as unknown as { webhook: Hook }).webhook;
+    assert.equal(updated.actions.length, 2);
+    assert.equal(hookOf(updated).as_json, true);
+    assert.equal(hookOf(updated).include_document, true);
+    assert.equal(hookOf(updated).id, hookOf(fetched).id, "webhook keeps its identity");
+  });
+
+  test("create_workflow ignores trigger/action ids copied from another workflow", async () => {
+    const stamp = Date.now();
+    const original = await harness.callTool<Workflow & { triggers: Array<{ id: number; filter_filename: string }> }>(
+      "create_workflow",
+      {
+        name: `e2e-wf-original-${stamp}`,
+        enabled: false,
+        triggers: [{ type: 2, filter_filename: "original-*" }],
+        actions: [{ type: 1, assign_title: "original" }],
+      }
+    );
+    workflowIds.push(original.id);
+
+    // "Duplicate this workflow": the copied objects still carry the original's ids.
+    const copy = await harness.callTool<Workflow>("create_workflow", {
+      name: `e2e-wf-copy-${stamp}`,
+      enabled: false,
+      triggers: [{ ...original.triggers[0], filter_filename: "copy-*" }],
+      actions: [{ ...original.actions[0], assign_title: "copy" }],
+    });
+    workflowIds.push(copy.id);
+
+    const originalAfter = await harness.callTool<Workflow & { triggers: Array<{ id: number; filter_filename: string }> }>(
+      "get_workflow",
+      { id: original.id }
+    );
+    assert.notEqual(copy.triggers[0].id, original.triggers[0].id);
+    assert.equal(originalAfter.triggers[0].filter_filename, "original-*");
+    assert.equal(originalAfter.actions[0].assign_title, "original");
+  });
+
   test("delete_workflow refuses without confirm", async () => {
     await assert.rejects(
       () => harness.callTool("delete_workflow", { id: 1, confirm: false }),

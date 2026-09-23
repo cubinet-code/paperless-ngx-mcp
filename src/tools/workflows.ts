@@ -45,6 +45,7 @@ export const workflowActionFields = {
       z.string(),
       z.union([z.string(), z.number(), z.boolean(), z.array(z.number()), z.null()])
     )
+    .nullable()
     .optional()
     .describe(
       `Type 1: values for assign_custom_fields keyed by custom field ID, e.g. {"7": "2026-01-01"}. ${CUSTOM_FIELD_VALUE_DESCRIPTION}`
@@ -68,6 +69,7 @@ export const workflowActionFields = {
   remove_change_groups: idList(),
   email: z
     .object({
+      id: z.number().nullable().optional().describe("Keep when editing an existing action's email settings"),
       subject: z.string(),
       body: z.string(),
       to: z.string().describe("Comma-separated email addresses"),
@@ -78,11 +80,14 @@ export const workflowActionFields = {
     .describe("Type 3: email configuration"),
   webhook: z
     .object({
+      id: z.number().nullable().optional().describe("Keep when editing an existing action's webhook settings"),
       url: z.string(),
       use_params: z.boolean().optional(),
-      params: z.record(z.string(), z.string()).optional(),
-      headers: z.record(z.string(), z.string()).optional(),
-      body: z.string().optional(),
+      as_json: z.boolean().optional().describe("Send params as a JSON body instead of form data"),
+      params: z.record(z.string(), z.string()).nullable().optional(),
+      headers: z.record(z.string(), z.string()).nullable().optional(),
+      body: z.string().nullable().optional(),
+      include_document: z.boolean().optional().describe("Attach the document file"),
     })
     .nullable()
     .optional()
@@ -90,11 +95,13 @@ export const workflowActionFields = {
   passwords: z
     .array(z.string())
     .min(1)
+    .nullable()
     .optional()
     .describe("Type 5 (required): PDF passwords to try, in order. The unlocked file is stored as a new version of the document."),
   ai_suggestion_fields: z
     .array(z.enum(["title", "tags", "correspondent", "document_type", "storage_path", "created"]))
     .min(1)
+    .nullable()
     .optional()
     .describe("Type 8 (required): which AI suggestions to apply. Needs AI enabled in Paperless."),
   ai_create_missing: z
@@ -149,16 +156,16 @@ export const workflowTriggerFields = {
   schedule_date_custom_field: z.number().nullable().optional().describe("Type 4 with schedule_date_field=custom_field: the date custom field ID"),
 };
 
-const nestedTriggerInput = z.object({
-  id: z.number().optional().describe("update_workflow only: ID of an existing trigger to keep and modify. Omit to create a new trigger."),
-  type: workflowTriggerType,
-  ...workflowTriggerFields,
-});
+// create_workflow takes no nested ids: Paperless would otherwise attach an
+// existing trigger (from a copied workflow) to the new one and rewrite it.
+const newTriggerInput = z.object({ type: workflowTriggerType, ...workflowTriggerFields });
+const newActionInput = z.object({ type: workflowActionType, ...workflowActionFields });
 
-const nestedActionInput = z.object({
-  id: z.number().optional().describe("update_workflow only: ID of an existing action to keep and modify. Omit to create a new action."),
-  type: workflowActionType,
-  ...workflowActionFields,
+const nestedTriggerInput = newTriggerInput.extend({
+  id: z.number().nullable().optional().describe("ID of an existing trigger to keep and modify. Omit to create a new trigger."),
+});
+const nestedActionInput = newActionInput.extend({
+  id: z.number().nullable().optional().describe("ID of an existing action to keep and modify. Omit to create a new action."),
 });
 
 export function registerWorkflowTools(server: McpServer, api: PaperlessAPI) {
@@ -193,7 +200,7 @@ export function registerWorkflowTools(server: McpServer, api: PaperlessAPI) {
 
   server.tool(
     "create_workflow_action",
-    "Create ONE workflow action. On its own an action does nothing — it runs only as part of a workflow. To build an automation, use create_workflow with nested triggers and actions; use this tool to prepare or inspect a single piece.",
+    "Create ONE standalone workflow action. On its own an action does nothing, and Paperless deletes actions that belong to no workflow whenever any workflow is updated. To build an automation, use create_workflow with the actions inline; to change an action inside a workflow, use update_workflow (or update_workflow_action with the action id from get_workflow).",
     {
       type: workflowActionType,
       ...workflowActionFields,
@@ -281,7 +288,7 @@ export function registerWorkflowTools(server: McpServer, api: PaperlessAPI) {
 
   server.tool(
     "create_workflow_trigger",
-    "Create ONE workflow trigger. On its own a trigger does nothing — it fires only as part of a workflow. To build an automation, use create_workflow with nested triggers and actions.",
+    "Create ONE standalone workflow trigger. On its own a trigger does nothing, and Paperless deletes triggers that belong to no workflow whenever any workflow is updated. To build an automation, use create_workflow with the triggers inline; to change a trigger inside a workflow, use update_workflow (or update_workflow_trigger with the trigger id from get_workflow).",
     {
       type: workflowTriggerType,
       ...workflowTriggerFields,
@@ -374,8 +381,8 @@ export function registerWorkflowTools(server: McpServer, api: PaperlessAPI) {
       name: z.string().min(1).max(256),
       order: z.number().int().optional().describe("Run order relative to other workflows (lower runs first)"),
       enabled: z.boolean().optional().describe("Default true"),
-      triggers: z.array(nestedTriggerInput).min(1),
-      actions: z.array(nestedActionInput).min(1),
+      triggers: z.array(newTriggerInput).min(1).describe("New triggers (any id is ignored)"),
+      actions: z.array(newActionInput).min(1).describe("New actions (any id is ignored)"),
     },
     Annotations.CREATE,
     withErrorHandling(async (args) => {
