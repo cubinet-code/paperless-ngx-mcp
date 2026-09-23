@@ -409,3 +409,39 @@ describe("edit_documents_bulk — remove_password", () => {
     assert.deepEqual(calls[0].parameters, { remote_ocr: true });
   });
 });
+
+describe("list_documents — 3.2 filters", () => {
+  test("forwards has_duplicates and a JSON custom_field_query", async () => {
+    let calledPath = "";
+    const api = createMockApi({
+      getDocuments: async (query: string) => {
+        calledPath = query;
+        return { count: 0, next: null, previous: null, results: [] };
+      },
+    });
+    const { server, tools } = createMockServer();
+    registerDocumentTools(server, api);
+    const tool = tools.get("list_documents")!;
+
+    // Parse like the MCP SDK does, so keys missing from the schema are stripped.
+    await tool.callback(
+      getZodSchemaShape(tool.schema).parse({
+        has_duplicates: true,
+        custom_field_query: '["Amount","gte",100]',
+      })
+    );
+
+    const params = new URLSearchParams(calledPath.replace(/^\?/, ""));
+    assert.equal(params.get("has_duplicates"), "true");
+    assert.equal(params.get("custom_field_query"), '["Amount","gte",100]');
+  });
+
+  test("custom_field_query is documented as a JSON expression", () => {
+    const { server, tools } = createMockServer();
+    registerDocumentTools(server, createMockApi({}));
+    const shape = tools.get("list_documents")!.schema as z.ZodRawShape;
+
+    assert.match(String(shape.custom_field_query.description), /JSON expression/);
+    assert.doesNotMatch(String(shape.custom_field_query.description), /custom_field_123=value/);
+  });
+});

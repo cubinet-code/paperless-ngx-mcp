@@ -6,7 +6,7 @@ import { convertDocsWithNames } from "../api/documentEnhancer";
 import { PaperlessAPI } from "../api/PaperlessAPI";
 import { BulkEditParameters, Document } from "../api/types";
 import { Annotations } from "./utils/annotations";
-import { CUSTOM_FIELD_VALUE_DESCRIPTION } from "./utils/descriptions";
+import { CUSTOM_FIELD_QUERY_DESCRIPTION, CUSTOM_FIELD_VALUE_DESCRIPTION } from "./utils/descriptions";
 import { arrayNotEmpty } from "./utils/empty";
 import { withErrorHandling } from "./utils/middlewares";
 import { validateCustomFields } from "./utils/monetary";
@@ -318,7 +318,7 @@ export function registerDocumentTools(server: McpServer, api: PaperlessAPI) {
 
   server.tool(
     "list_documents",
-    "List and filter documents by fields such as title, correspondent, document type, tag, storage path, creation date, and more. IMPORTANT: For queries like 'the last 3 contributions' or when searching by tag, correspondent, document type, or storage path, you should FIRST use the relevant tool (e.g., 'list_tags', 'list_correspondents', 'list_document_types', 'list_storage_paths') to find the correct ID, and then use that ID as a filter here. Only use the 'search' argument for free-text search when no specific field applies. Using the correct ID filter will yield much more accurate results. Note: Document content is excluded from results by default. Use 'get_document_content' to retrieve content when needed.",
+    "List and filter documents by fields such as title, correspondent, document type, tag, storage path, creation date, and more. IMPORTANT: For queries like 'the last 3 contributions' or when searching by tag, correspondent, document type, or storage path, you should FIRST use the relevant tool (e.g., 'list_tags', 'list_correspondents', 'list_document_types', 'list_storage_paths') to find the correct ID, and then use that ID as a filter here. Only use the 'search' argument for free-text search when no specific field applies. Using the correct ID filter will yield much more accurate results. Note: Document content is excluded from results by default. Use 'get_document_content' to retrieve content when needed. To find near-duplicates of one document use more_like_id; to list everything Paperless has flagged as a duplicate use has_duplicates=true.",
     {
       ...paginationFields,
       search: z.string().optional(),
@@ -330,7 +330,11 @@ export function registerDocumentTools(server: McpServer, api: PaperlessAPI) {
       created__date__lte: z.string().optional(),
       ordering: z.string().optional(),
       more_like_id: z.number().optional().describe("Find documents similar to the document with this ID"),
-      custom_field_query: z.string().optional().describe("Filter by custom field values using query syntax, e.g. 'custom_field_123=value'"),
+      has_duplicates: z
+        .boolean()
+        .optional()
+        .describe("true = only documents Paperless flagged as possible duplicates (the same file as another document); false = only documents without. get_document lists the matching documents in duplicate_documents (list results leave that field empty)."),
+      custom_field_query: z.string().optional().describe(CUSTOM_FIELD_QUERY_DESCRIPTION),
     },
     Annotations.READ,
     withErrorHandling(async (args) => {
@@ -357,7 +361,7 @@ export function registerDocumentTools(server: McpServer, api: PaperlessAPI) {
 
   server.tool(
     "get_document",
-    "Get a specific document by ID with full details including correspondent, document type, tags, and custom fields. Note: Document content is excluded from results by default. Use 'get_document_content' to retrieve content when needed.",
+    "Get a specific document by ID with full details including correspondent, document type, tags, and custom fields. Note: Document content is excluded from results by default. Use 'get_document_content' to retrieve content when needed. Documents can have several file versions (`versions`; manage them with upload_document_version / update_document_version / delete_document_version). Content (get_document_content) and get_document_metadata follow the LATEST version, but page_count, original_file_name and archived_file_name always describe the ROOT (first) version — e.g. after a password-protected PDF was unlocked into a new version, page_count stays null. Don't use page_count to judge whether a document is readable; check its content.",
     {
       id: z.number(),
     },
