@@ -5,29 +5,67 @@ import { Annotations } from "./utils/annotations";
 import { withErrorHandling } from "./utils/middlewares";
 import { buildQueryString } from "./utils/queryString";
 import { deletedResponse, requireConfirm } from "./utils/responses";
-import { matchingAlgorithmField, paginationFields } from "./utils/schemas";
+import { CUSTOM_FIELD_QUERY_DESCRIPTION, CUSTOM_FIELD_VALUE_DESCRIPTION } from "./utils/descriptions";
+import { paginationFields } from "./utils/schemas";
 
-const workflowActionFields = {
-  assign_title: z.string().max(256).nullable().optional(),
-  assign_tags: z.array(z.number()).nullable().optional(),
+const idList = () => z.array(z.number()).optional();
+
+export const workflowActionType = z
+  .number()
+  .int()
+  .min(1)
+  .max(8)
+  .describe(
+    "Action type: 1=assignment, 2=removal, 3=email, 4=webhook, 5=password removal (needs passwords), 6=move to trash, 7=remote OCR (its workflow must have a type-1 consumption-started trigger), 8=apply AI suggestions (needs ai_suggestion_fields; its workflow must have a trigger other than type 1)"
+  );
+
+export const workflowTriggerType = z
+  .number()
+  .int()
+  .min(1)
+  .max(4)
+  .describe(
+    "Trigger type: 1=consumption started, 2=document added, 3=document updated, 4=scheduled"
+  );
+
+export const workflowActionFields = {
+  assign_title: z.string().max(256).nullable().optional().describe("Type 1: Jinja2 title template"),
+  assign_tags: idList(),
   assign_correspondent: z.number().nullable().optional(),
   assign_document_type: z.number().nullable().optional(),
   assign_storage_path: z.number().nullable().optional(),
   assign_owner: z.number().nullable().optional(),
-  assign_view_users: z.array(z.number()).optional(),
-  assign_view_groups: z.array(z.number()).optional(),
-  assign_change_users: z.array(z.number()).optional(),
-  assign_change_groups: z.array(z.number()).optional(),
-  assign_custom_fields: z.array(z.number()).optional(),
+  assign_view_users: idList(),
+  assign_view_groups: idList(),
+  assign_change_users: idList(),
+  assign_change_groups: idList(),
+  assign_custom_fields: idList().describe("Type 1: custom field IDs to add"),
+  assign_custom_fields_values: z
+    .record(
+      z.string(),
+      z.union([z.string(), z.number(), z.boolean(), z.array(z.number()), z.null()])
+    )
+    .optional()
+    .describe(
+      `Type 1: values for assign_custom_fields keyed by custom field ID, e.g. {"7": "2026-01-01"}. ${CUSTOM_FIELD_VALUE_DESCRIPTION}`
+    ),
   remove_all_tags: z.boolean().optional(),
-  remove_tags: z.array(z.number()).optional(),
+  remove_tags: idList(),
   remove_all_correspondents: z.boolean().optional(),
+  remove_correspondents: idList(),
   remove_all_document_types: z.boolean().optional(),
+  remove_document_types: idList(),
   remove_all_storage_paths: z.boolean().optional(),
-  remove_custom_fields: z.array(z.number()).optional(),
+  remove_storage_paths: idList(),
   remove_all_custom_fields: z.boolean().optional(),
+  remove_custom_fields: idList(),
   remove_all_owners: z.boolean().optional(),
+  remove_owners: idList(),
   remove_all_permissions: z.boolean().optional(),
+  remove_view_users: idList(),
+  remove_view_groups: idList(),
+  remove_change_users: idList(),
+  remove_change_groups: idList(),
   email: z
     .object({
       subject: z.string(),
@@ -37,7 +75,7 @@ const workflowActionFields = {
     })
     .nullable()
     .optional()
-    .describe("Email configuration for email-type actions"),
+    .describe("Type 3: email configuration"),
   webhook: z
     .object({
       url: z.string(),
@@ -48,35 +86,67 @@ const workflowActionFields = {
     })
     .nullable()
     .optional()
-    .describe("Webhook configuration for webhook-type actions"),
+    .describe("Type 4: webhook configuration"),
+  passwords: z
+    .array(z.string())
+    .min(1)
+    .optional()
+    .describe("Type 5 (required): PDF passwords to try, in order. The unlocked file is stored as a new version of the document."),
+  ai_suggestion_fields: z
+    .array(z.enum(["title", "tags", "correspondent", "document_type", "storage_path", "created"]))
+    .min(1)
+    .optional()
+    .describe("Type 8 (required): which AI suggestions to apply. Needs AI enabled in Paperless."),
+  ai_create_missing: z
+    .boolean()
+    .optional()
+    .describe("Type 8: create suggested tags/correspondents/document types/storage paths that don't exist yet"),
+  ai_overwrite_existing: z
+    .boolean()
+    .optional()
+    .describe("Type 8: apply suggestions even when the document already has a value"),
 };
 
-const workflowTriggerFields = {
+export const workflowTriggerFields = {
   sources: z
-    .array(z.number())
+    .array(z.number().int().min(1).max(4))
     .optional()
-    .describe(
-      "Source types: 1=consume_folder, 2=api_upload, 3=mail_fetch, 4=ui_upload (default: [1,2,3])"
-    ),
-  filter_path: z.string().max(256).nullable().optional(),
+    .describe("Consumption sources: 1=consume folder, 2=API upload, 3=mail fetch, 4=web UI (default [1,2,3])"),
+  filter_path: z.string().max(256).nullable().optional().describe("Path pattern, * wildcards allowed"),
   filter_filename: z
     .string()
     .max(256)
     .nullable()
     .optional()
-    .describe("Filename pattern to match"),
-  filter_mailrule: z.number().nullable().optional(),
-  matching_algorithm: matchingAlgorithmField,
+    .describe("Filename pattern (whole name must match), * wildcards allowed"),
+  filter_mailrule: z.number().nullable().optional().describe("Only documents fetched by this mail rule ID"),
+  matching_algorithm: z
+    .number()
+    .int()
+    .min(0)
+    .max(5)
+    .optional()
+    .describe("Content match for `match`: 0=none, 1=any word, 2=all words, 3=exact, 4=regular expression, 5=fuzzy word"),
   match: z.string().max(256).optional(),
   is_insensitive: z.boolean().optional(),
-  filter_has_tags: z.array(z.number()).optional(),
-  filter_has_correspondent: z.number().nullable().optional(),
-  filter_has_document_type: z.number().nullable().optional(),
-  schedule_offset_days: z.number().optional(),
+  filter_has_tags: idList().describe("Document has ANY of these tags"),
+  filter_has_all_tags: idList().describe("Document has ALL of these tags"),
+  filter_has_not_tags: idList().describe("Document has NONE of these tags"),
+  filter_has_any_correspondents: idList().describe("Correspondent is one of these"),
+  filter_has_not_correspondents: idList().describe("Correspondent is none of these"),
+  filter_has_any_document_types: idList().describe("Document type is one of these"),
+  filter_has_not_document_types: idList().describe("Document type is none of these"),
+  filter_has_any_storage_paths: idList().describe("Storage path is one of these"),
+  filter_has_not_storage_paths: idList().describe("Storage path is none of these"),
+  filter_custom_field_query: z.string().nullable().optional().describe(CUSTOM_FIELD_QUERY_DESCRIPTION),
+  schedule_offset_days: z.number().int().optional().describe("Type 4: days to offset from schedule_date_field"),
   schedule_is_recurring: z.boolean().optional(),
-  schedule_recurring_interval_days: z.number().min(1).optional(),
-  schedule_date_field: z.string().optional(),
-  schedule_date_custom_field: z.number().nullable().optional(),
+  schedule_recurring_interval_days: z.number().int().min(1).optional(),
+  schedule_date_field: z
+    .enum(["added", "created", "modified", "custom_field"])
+    .optional()
+    .describe("Type 4: date the schedule is based on"),
+  schedule_date_custom_field: z.number().nullable().optional().describe("Type 4 with schedule_date_field=custom_field: the date custom field ID"),
 };
 
 export function registerWorkflowTools(server: McpServer, api: PaperlessAPI) {
@@ -111,11 +181,9 @@ export function registerWorkflowTools(server: McpServer, api: PaperlessAPI) {
 
   server.tool(
     "create_workflow_action",
-    "Create a new workflow action. Actions define what happens when a workflow is triggered (e.g., assign tags, set correspondent, send email).",
+    "Create ONE workflow action. On its own an action does nothing — it runs only as part of a workflow. To build an automation, use create_workflow with nested triggers and actions; use this tool to prepare or inspect a single piece.",
     {
-      type: z
-        .number()
-        .describe("Action type: 1=assignment, 2=removal, 3=email, 4=webhook"),
+      type: workflowActionType,
       ...workflowActionFields,
     },
     Annotations.CREATE,
@@ -132,10 +200,10 @@ export function registerWorkflowTools(server: McpServer, api: PaperlessAPI) {
 
   server.tool(
     "update_workflow_action",
-    "Update fields on ONE workflow action (PATCH — only fields you supply are changed). Editable fields: type plus the action-specific configuration fields (assign_title, assign_tags, assign_correspondent, assign_document_type, assign_storage_path, assign_owner, assign_view_users, assign_view_groups, assign_change_users, assign_change_groups, assign_custom_fields, etc.). Use list_workflow_actions / get_workflow_action first to see which fields a given action uses.",
+    "Update fields on ONE workflow action (PATCH — only fields you supply are changed). Use get_workflow_action first to see its current shape. To change the actions of a whole workflow, see update_workflow.",
     {
       id: z.number(),
-      type: z.number().optional(),
+      type: workflowActionType.optional(),
       ...workflowActionFields,
     },
     Annotations.UPDATE,
@@ -201,13 +269,9 @@ export function registerWorkflowTools(server: McpServer, api: PaperlessAPI) {
 
   server.tool(
     "create_workflow_trigger",
-    "Create a new workflow trigger. Triggers define when a workflow executes (e.g., on document consumption, on update, on a schedule).",
+    "Create ONE workflow trigger. On its own a trigger does nothing — it fires only as part of a workflow. To build an automation, use create_workflow with nested triggers and actions.",
     {
-      type: z
-        .number()
-        .describe(
-          "Trigger type: 1=consumption, 2=document_added, 3=document_updated, 4=scheduled"
-        ),
+      type: workflowTriggerType,
       ...workflowTriggerFields,
     },
     Annotations.CREATE,
@@ -224,10 +288,10 @@ export function registerWorkflowTools(server: McpServer, api: PaperlessAPI) {
 
   server.tool(
     "update_workflow_trigger",
-    "Update fields on ONE workflow trigger (PATCH — only fields you supply are changed). Editable fields: type (1=consumption, 2=document_added, 3=document_updated, 4=scheduled) plus trigger-specific match/filter fields. Use list_workflow_triggers / get_workflow_trigger first to see the current shape.",
+    "Update fields on ONE workflow trigger (PATCH — only fields you supply are changed). Use get_workflow_trigger first to see its current shape.",
     {
       id: z.number(),
-      type: z.number().optional(),
+      type: workflowTriggerType.optional(),
       ...workflowTriggerFields,
     },
     Annotations.UPDATE,

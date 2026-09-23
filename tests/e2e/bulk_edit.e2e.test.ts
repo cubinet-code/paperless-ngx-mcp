@@ -2,43 +2,10 @@ import { before, test, describe } from "node:test";
 import assert from "node:assert/strict";
 import axios from "axios";
 import { createHarness, type E2EHarness } from "./harness";
-import { seed } from "./setup/seed";
+import { seed, ensureCustomField, type CustomField } from "./setup/seed";
 import { seedDocument } from "./setup/document";
 
 const BASE_URL = process.env.PAPERLESS_E2E_URL ?? "http://localhost:8001";
-
-interface CustomField {
-  id: number;
-  name: string;
-  data_type: string;
-}
-
-async function ensureCustomField(
-  token: string,
-  name: string,
-  data_type: string
-): Promise<CustomField> {
-  const list = await axios.get<{ results: CustomField[] }>(
-    `${BASE_URL}/api/custom_fields/`,
-    {
-      headers: { Authorization: `Token ${token}` },
-      params: { page_size: 100 },
-      timeout: 10_000,
-    }
-  );
-  const existing = list.data.results.find((f) => f.name === name);
-  if (existing) return existing;
-
-  const res = await axios.post<CustomField>(
-    `${BASE_URL}/api/custom_fields/`,
-    { name, data_type },
-    {
-      headers: { Authorization: `Token ${token}` },
-      timeout: 10_000,
-    }
-  );
-  return res.data;
-}
 
 async function fetchDocument(
   token: string,

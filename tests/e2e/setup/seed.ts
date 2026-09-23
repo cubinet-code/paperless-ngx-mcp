@@ -144,3 +144,53 @@ export async function seed(): Promise<{ token: string }> {
   return { token };
 }
 
+export interface CustomField {
+  id: number;
+  name: string;
+  data_type: string;
+}
+
+export async function ensureCustomField(
+  token: string,
+  name: string,
+  data_type: string
+): Promise<CustomField> {
+  const list = await axios.get<{ results: CustomField[] }>(
+    `${BASE_URL}/api/custom_fields/`,
+    {
+      headers: { Authorization: `Token ${token}` },
+      params: { page_size: 100 },
+      timeout: 10_000,
+    }
+  );
+  const existing = list.data.results.find((f) => f.name === name);
+  if (existing) return existing;
+
+  const res = await axios.post<CustomField>(
+    `${BASE_URL}/api/custom_fields/`,
+    { name, data_type },
+    {
+      headers: { Authorization: `Token ${token}` },
+      timeout: 10_000,
+    }
+  );
+  return res.data;
+}
+
+export async function findIdByName(
+  token: string,
+  endpoint: "tags" | "correspondents" | "document_types",
+  name: string
+): Promise<number> {
+  const res = await axios.get<{ results: Array<{ id: number }> }>(
+    `${BASE_URL}/api/${endpoint}/`,
+    {
+      headers: { Authorization: `Token ${token}` },
+      params: { name__iexact: name },
+      timeout: 10_000,
+    }
+  );
+  const id = res.data.results[0]?.id;
+  if (id === undefined) throw new Error(`No ${endpoint} named ${name}`);
+  return id;
+}
