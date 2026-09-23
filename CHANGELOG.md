@@ -17,11 +17,11 @@ Aligns the tool surface with **Paperless-ngx 3.2** and drops support for older P
 
 ### Added
 
-- **Workflows:** `list_workflows`, `get_workflow`, `create_workflow`, `update_workflow`, `delete_workflow`. A workflow, with its nested triggers and actions, is what Paperless actually runs; standalone triggers and actions do nothing on their own.
+- **Workflows:** `list_workflows`, `get_workflow`, `create_workflow`, `update_workflow`, `delete_workflow`. A workflow, with its nested triggers and actions, is what Paperless actually runs; standalone triggers and actions do nothing on their own (and Paperless deletes unattached ones whenever a workflow is updated). `get_workflow` output can be edited and sent straight back to `update_workflow`; `create_workflow` ignores nested ids, so copying a workflow never takes over the original's triggers. Webhook actions gain `as_json` and `include_document`.
 - **Document versions:** `upload_document_version`, `update_document_version`, `delete_document_version`, `merge_documents_as_versions`.
-- **`edit_documents_bulk`:** method `remove_password` (with `update_document: true` the unlocked file becomes a new version), `remote_ocr` for method `reprocess`, and `all` + `filters` (+ `excluded_documents`) to select every matching document, e.g. to reassign all documents of a duplicate correspondent in one call.
+- **`edit_documents_bulk`:** method `remove_password` (with `update_document: true` the unlocked file becomes a new version), `remote_ocr` for method `reprocess`, and `all` + `filters` (+ `excluded_documents`) to select every matching document, e.g. to reassign all documents of a duplicate correspondent in one call. Filter keys Paperless would silently ignore (which would select every document) are refused, invalid values are caught by a preview query, and the result reports `matched_documents`.
 - **`list_documents`:** `has_duplicates` filter.
-- **Mail:** `list/get/create/update/delete_mail_account`, `test_mail_account`, `process_mail_account`, `list/get/create/update/delete_mail_rule`.
+- **Mail:** `list/get/create/update/delete_mail_account`, `test_mail_account` (pass a saved account's `id` to test it with its stored password), `process_mail_account`, `list/get/create/update/delete_mail_rule`.
 - **Share link bundles:** `list/get/create/rebuild/delete_share_link_bundle(s)`.
 - **System:** `get_system_status` (includes the Paperless version), `get_document_ai_suggestions`, `list_active_tasks`, `get_task_status_counts`, `get_task_summary`. `list_tasks` accepts `task_type: apply_ai_suggestions`.
 - `get_document` now explains which fields follow the latest version (content, metadata) and which describe the root (`page_count`, file names).

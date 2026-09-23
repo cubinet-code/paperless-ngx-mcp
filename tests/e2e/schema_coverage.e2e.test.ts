@@ -245,14 +245,16 @@ const SKIPPED: Record<string, SkipEntry> = {
     reason: "global search; we use /documents/?query= instead",
   },
 
-  // Paperless 3.2 standalone document operations — same operations as
-  // edit_documents_bulk methods, which we already wrap.
-  "POST /api/documents/delete/": { reason: "same as edit_documents_bulk method delete" },
-  "POST /api/documents/edit_pdf/": { reason: "same as edit_documents_bulk method edit_pdf" },
-  "POST /api/documents/merge/": { reason: "same as edit_documents_bulk method merge" },
-  "POST /api/documents/remove_password/": { reason: "same as edit_documents_bulk method remove_password" },
-  "POST /api/documents/reprocess/": { reason: "same as edit_documents_bulk method reprocess" },
-  "POST /api/documents/rotate/": { reason: "same as edit_documents_bulk method rotate" },
+  // Paperless 3.2 standalone document operations. edit_documents_bulk still
+  // reaches these through /documents/bulk_edit/, where upstream marks the
+  // methods deprecated on API v10 (logged on every call) and plans to remove
+  // them — move edit_documents_bulk onto these endpoints before that happens.
+  "POST /api/documents/delete/": { reason: "reached via deprecated bulk_edit method delete — migrate before upstream removal" },
+  "POST /api/documents/edit_pdf/": { reason: "reached via deprecated bulk_edit methods edit_pdf/split/delete_pages — migrate before upstream removal" },
+  "POST /api/documents/merge/": { reason: "reached via deprecated bulk_edit method merge — migrate before upstream removal" },
+  "POST /api/documents/remove_password/": { reason: "reached via deprecated bulk_edit method remove_password — migrate before upstream removal" },
+  "POST /api/documents/reprocess/": { reason: "reached via deprecated bulk_edit method reprocess — migrate before upstream removal" },
+  "POST /api/documents/rotate/": { reason: "reached via deprecated bulk_edit method rotate — migrate before upstream removal" },
   "POST /api/documents/chat/": { reason: "streaming LLM chat UI endpoint, not a request/response tool" },
   "GET /api/documents/{id}/root/": { reason: "maps a version id to its root; versions are always listed on the root document" },
 };
