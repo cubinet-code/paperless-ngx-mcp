@@ -28,6 +28,12 @@ function getContentDispositionHeader(headers: unknown): string | null {
   return h["content-disposition"] ?? null;
 }
 
+// Paperless answers OK for remove_password even when it skipped a document
+// (its latest version isn't encrypted) or the password was wrong — only a
+// successful unlock queues a consume task. Say so, so the agent verifies.
+const REMOVE_PASSWORD_NOTE =
+  "Paperless reports OK even when it skips a document whose latest version is not encrypted, or when the password is wrong. A successful unlock adds a new version (update_document=true) or a new document within seconds — check get_document's versions, or list_tasks with task_type consume_file.";
+
 export function registerDocumentTools(server: McpServer, api: PaperlessAPI) {
   server.tool(
     "edit_documents_bulk",
@@ -209,7 +215,11 @@ export function registerDocumentTools(server: McpServer, api: PaperlessAPI) {
           content: [
             {
               type: "text",
-              text: JSON.stringify({ result: response.result }),
+              text: JSON.stringify(
+                method === "remove_password"
+                  ? { result: response.result, note: REMOVE_PASSWORD_NOTE }
+                  : { result: response.result }
+              ),
             },
           ],
         };

@@ -453,6 +453,26 @@ describe("edit_documents_bulk — remove_password", () => {
     assert.deepEqual(calls[0].parameters, { password: "s3cret", update_document: true });
   });
 
+  test("the result explains that Paperless's OK doesn't confirm an unlock", async () => {
+    // Upstream returns OK even when it skips a document (latest version not
+    // encrypted) or the password is wrong — only a real unlock queues a task.
+    const { api } = bulkEditCapture();
+    const { server, tools } = createMockServer();
+    registerDocumentTools(server, api);
+
+    const result = await tools.get("edit_documents_bulk")!.callback({
+      documents: [7],
+      method: "remove_password",
+      password: "s3cret",
+      update_document: true,
+    });
+    const body = getTextContent(result) as { result: string; note?: string };
+
+    assert.equal(body.result, "OK");
+    assert.match(String(body.note), /wrong password|not encrypted/);
+    assert.match(String(body.note), /versions/);
+  });
+
   test("reprocess forwards remote_ocr", async () => {
     const { calls, api } = bulkEditCapture();
     const { server, tools } = createMockServer();
