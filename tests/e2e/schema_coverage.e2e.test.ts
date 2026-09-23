@@ -95,6 +95,13 @@ const WRAPPED = new Set<string>([
   "GET /api/share_links/{id}/",
   "DELETE /api/share_links/{id}/",
 
+  // share_link_bundles
+  "GET /api/share_link_bundles/",
+  "POST /api/share_link_bundles/",
+  "GET /api/share_link_bundles/{id}/",
+  "DELETE /api/share_link_bundles/{id}/",
+  "POST /api/share_link_bundles/{id}/rebuild/",
+
   // statistics
   "GET /api/statistics/",
 
