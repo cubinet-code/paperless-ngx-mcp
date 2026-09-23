@@ -37,9 +37,24 @@ function getContentDispositionHeader(headers: unknown): string | null {
 export function registerDocumentTools(server: McpServer, api: PaperlessAPI) {
   server.tool(
     "edit_documents_bulk",
-    "Apply ONE of a fixed set of operations to MANY documents at once. Methods: set_correspondent, set_document_type, set_storage_path, add_tag, remove_tag, modify_tags, modify_custom_fields, set_permissions, delete, reprocess, merge, split, rotate, delete_pages, edit_pdf. For per-document field edits including title, content, created (date), archive_serial_number, or owner, use update_document instead — those fields are not editable here. Note: 'remove_tag' only removes the tag from the specified documents (tag stays in the system); 'delete_tag' permanently deletes the tag from the entire system. ⚠️ WARNING: method 'delete' permanently deletes documents and requires confirm=true.",
+    "Apply ONE of a fixed set of operations to MANY documents at once. Methods: set_correspondent, set_document_type, set_storage_path, add_tag, remove_tag, modify_tags, modify_custom_fields, set_permissions, delete, reprocess, merge, split, rotate, delete_pages, edit_pdf, remove_password. For per-document field edits including title, content, created (date), archive_serial_number, or owner, use update_document instead — those fields are not editable here. Note: 'remove_tag' only removes the tag from the specified documents (tag stays in the system); 'delete_tag' permanently deletes the tag from the entire system. ⚠️ WARNING: method 'delete' permanently deletes documents and requires confirm=true. Select documents either by `documents` (IDs) or by `all: true` + `filters` (the same filter names as list_documents' wire query, e.g. {\"correspondent__id\": 12}) — the filter form moves every matching document in one call, e.g. reassigning all documents from a duplicate correspondent before deleting it. Method remove_password strips a PDF password (needs `password`); with update_document=true the unlocked file is stored as a new version of the same document. Method reprocess accepts remote_ocr=true to use the configured remote OCR engine.",
     {
-      documents: z.array(z.number()),
+      documents: z
+        .array(z.number())
+        .optional()
+        .describe("Document IDs to change. Omit when selecting with all + filters."),
+      all: z
+        .boolean()
+        .optional()
+        .describe("Select every document matching `filters` instead of listing IDs"),
+      filters: z
+        .record(z.string(), z.union([z.string(), z.number(), z.boolean()]))
+        .optional()
+        .describe("With all=true (required then): list_documents wire filters, e.g. {\"correspondent__id\": 12}, {\"tags__id__all\": \"3,4\"}, {\"document_type__id\": 5}"),
+      excluded_documents: z
+        .array(z.number())
+        .optional()
+        .describe("With all=true: IDs to leave out of the selection"),
       method: z.enum([
         "set_correspondent",
         "set_document_type",
@@ -56,6 +71,7 @@ export function registerDocumentTools(server: McpServer, api: PaperlessAPI) {
         "rotate",
         "delete_pages",
         "edit_pdf",
+        "remove_password",
       ]),
       correspondent: z.number().optional(),
       document_type: z.number().optional(),
@@ -113,11 +129,23 @@ export function registerDocumentTools(server: McpServer, api: PaperlessAPI) {
       update_document: z
         .boolean()
         .optional()
-        .describe("edit_pdf: replace the document in place (default false)."),
+        .describe("edit_pdf / remove_password: store the result as a new version of the same document instead of creating a new document (default false)."),
       include_metadata: z
         .boolean()
         .optional()
-        .describe("edit_pdf: copy metadata to the new document (default true)."),
+        .describe("edit_pdf / remove_password: copy metadata to the new document (default true)."),
+      password: z
+        .string()
+        .optional()
+        .describe("remove_password: the PDF's password"),
+      delete_original: z
+        .boolean()
+        .optional()
+        .describe("remove_password / edit_pdf: delete the original after writing a separate new document (ignored with update_document=true)"),
+      remote_ocr: z
+        .boolean()
+        .optional()
+        .describe("reprocess: OCR with the remote OCR engine configured in Paperless instead of the local one (default false)"),
       metadata_document_id: z.number().optional(),
       delete_originals: z.boolean().optional(),
       pages: z.string().optional(),
@@ -132,7 +160,29 @@ export function registerDocumentTools(server: McpServer, api: PaperlessAPI) {
     Annotations.BULK_EDIT,
     withErrorHandling(async (args) => {
       if (args.method === "delete") requireConfirm(args.confirm);
-      const { documents, method, add_custom_fields, confirm, ...rest } = args;
+      const {
+        documents,
+        all,
+        filters,
+        excluded_documents,
+        method,
+        add_custom_fields,
+        confirm,
+        ...rest
+      } = args;
+
+      if (all) {
+        if (!filters || Object.keys(filters).length === 0) {
+          throw new Error(
+            "all=true needs a non-empty `filters` object — without one the change would apply to every document in Paperless."
+          );
+        }
+        if (documents && documents.length > 0) {
+          throw new Error("Pass either `documents` or `all` + `filters`, not both.");
+        }
+      } else if (!documents || documents.length === 0) {
+        throw new Error("Pass `documents` (IDs), or `all: true` with `filters`.");
+      }
 
       validateCustomFields(add_custom_fields);
 
@@ -150,9 +200,10 @@ export function registerDocumentTools(server: McpServer, api: PaperlessAPI) {
       }
 
       const response = await api.bulkEditDocuments(
-        documents,
+        all ? [] : documents!,
         method,
-        apiParameters
+        apiParameters,
+        all ? { filters: filters!, excluded_documents } : undefined
       );
       return {
         content: [

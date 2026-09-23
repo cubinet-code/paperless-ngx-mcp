@@ -112,7 +112,8 @@ export class PaperlessAPI {
   async bulkEditDocuments(
     documents: number[],
     method: string,
-    parameters: BulkEditParameters = {}
+    parameters: BulkEditParameters = {},
+    selectAll?: { filters: Record<string, unknown>; excluded_documents?: number[] }
   ): Promise<BulkEditDocumentsResult> {
     return this.request<BulkEditDocumentsResult>("/documents/bulk_edit/", {
       method: "POST",
@@ -120,6 +121,7 @@ export class PaperlessAPI {
         documents,
         method,
         parameters,
+        ...(selectAll ? { all: true, ...selectAll } : {}),
       }),
     });
   }

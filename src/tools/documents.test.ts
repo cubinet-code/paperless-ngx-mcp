@@ -16,6 +16,7 @@ interface BulkEditCall {
   documents: number[];
   method: string;
   parameters: Record<string, unknown>;
+  selectAll?: Record<string, unknown>;
 }
 
 function bulkEditCapture(): {
@@ -27,9 +28,10 @@ function bulkEditCapture(): {
     bulkEditDocuments: async (
       documents: number[],
       method: string,
-      parameters: Record<string, unknown>
+      parameters: Record<string, unknown>,
+      selectAll?: Record<string, unknown>
     ) => {
-      calls.push({ documents, method, parameters });
+      calls.push({ documents, method, parameters, selectAll });
       return { result: "OK" };
     },
   });
@@ -321,5 +323,89 @@ describe("post_document — poll", () => {
 
     assert.equal(body.status, "async-uuid");
     assert.equal(requested, false, "must not poll when poll is not requested");
+  });
+});
+
+describe("edit_documents_bulk — selection by filter", () => {
+  test("all + filters is sent as a select-all selection, not as method parameters", async () => {
+    const { calls, api } = bulkEditCapture();
+    const { server, tools } = createMockServer();
+    registerDocumentTools(server, api);
+
+    await tools.get("edit_documents_bulk")!.callback({
+      all: true,
+      filters: { correspondent__id: 12 },
+      excluded_documents: [3],
+      method: "set_correspondent",
+      correspondent: 34,
+    });
+
+    assert.deepEqual(calls[0].documents, []);
+    assert.deepEqual(calls[0].selectAll, { filters: { correspondent__id: 12 }, excluded_documents: [3] });
+    assert.deepEqual(calls[0].parameters, { correspondent: 34 });
+  });
+
+  for (const [label, args, message] of [
+    ["all without filters", { all: true, method: "delete", confirm: true }, /non-empty `filters`/],
+    ["all with empty filters", { all: true, filters: {}, method: "add_tag", tag: 1 }, /non-empty `filters`/],
+    ["documents and all together", { all: true, filters: { tags__id: 1 }, documents: [1], method: "add_tag", tag: 1 }, /either `documents` or `all`/],
+    ["neither documents nor all", { method: "add_tag", tag: 1 }, /Pass `documents`/],
+  ] as const) {
+    test(`refuses ${label} without calling the API`, async () => {
+      const { calls, api } = bulkEditCapture();
+      const { server, tools } = createMockServer();
+      registerDocumentTools(server, api);
+
+      await assert.rejects(() => tools.get("edit_documents_bulk")!.callback({ ...args }), message);
+      assert.equal(calls.length, 0);
+    });
+  }
+});
+
+describe("edit_documents_bulk — remove_password", () => {
+  test("schema's method enum includes remove_password", () => {
+    const { server, tools } = createMockServer();
+    registerDocumentTools(server, createMockApi({}));
+    const schema = getZodSchemaShape(tools.get("edit_documents_bulk")!.schema);
+
+    const parsed = schema.parse({ documents: [7], method: "remove_password", password: "x" });
+    assert.equal(parsed.method, "remove_password");
+  });
+
+  test("forwards password and the output flags as parameters", async () => {
+    const { calls, api } = bulkEditCapture();
+    const { server, tools } = createMockServer();
+    registerDocumentTools(server, api);
+
+    const tool = tools.get("edit_documents_bulk")!;
+    // Parse like the MCP SDK does, so keys missing from the schema are stripped.
+    await tool.callback(
+      getZodSchemaShape(tool.schema).parse({
+        documents: [7],
+        method: "remove_password",
+        password: "s3cret",
+        update_document: true,
+      })
+    );
+
+    assert.equal(calls[0].method, "remove_password");
+    assert.deepEqual(calls[0].parameters, { password: "s3cret", update_document: true });
+  });
+
+  test("reprocess forwards remote_ocr", async () => {
+    const { calls, api } = bulkEditCapture();
+    const { server, tools } = createMockServer();
+    registerDocumentTools(server, api);
+
+    const tool = tools.get("edit_documents_bulk")!;
+    await tool.callback(
+      getZodSchemaShape(tool.schema).parse({
+        documents: [7],
+        method: "reprocess",
+        remote_ocr: true,
+      })
+    );
+
+    assert.deepEqual(calls[0].parameters, { remote_ocr: true });
   });
 });
