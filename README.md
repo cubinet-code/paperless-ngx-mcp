@@ -13,7 +13,7 @@ A [Model Context Protocol](https://modelcontextprotocol.io/) server for [Paperle
 
 - **Complete, and it stays that way.** A CI test checks every endpoint in Paperless's `/api/schema/` against the tools here and fails when upstream adds one that is neither wrapped nor deliberately skipped.
 - **Tested against real Paperless.** The end-to-end suite runs the tools against a live Paperless-ngx 3.2.1 container, not mocks.
-- **Asks before it breaks things.** Every `delete_*` tool and `empty_trash` require `confirm: true`, and the [`triage_inbox`](#triage_inbox) prompt proposes changes and waits for your go-ahead before writing anything.
+- **Asks before it breaks things.** Every `delete_*` tool, `empty_trash`, `merge_documents_as_versions` and bulk `delete` require `confirm: true`; bulk edits across "all matching documents" refuse filters Paperless would silently ignore; and the [`triage_inbox`](#triage_inbox) prompt proposes changes and waits for your go-ahead before writing anything.
 - **Easy to allowlist.** Verb-first tool names (`list_*`, `get_*`, `delete_*`, …) group into [one permission wildcard each](#tool-naming-convention-for-permission-allowlists).
 - **Install it your way:** `npx`, a Docker image, a one-click Claude Desktop extension, or the official MCP Registry.
 
@@ -116,7 +116,7 @@ docker run -d -p 127.0.0.1:3000:3000 \
 | `PAPERLESS_API_KEY` | yes | API token (see above). |
 | `PAPERLESS_PUBLIC_URL` | no | Public URL the assistant uses when constructing browser links to documents. Falls back to `PAPERLESS_URL`. |
 
-CLI flags (`--baseUrl`, `--token`, `--publicUrl`, `--http`, `--port`) take precedence over environment variables.
+CLI flags (`--baseUrl`, `--token`, `--publicUrl`, `--http`, `--port`, plus the HTTP [session limits](#session-limits)) take precedence over environment variables.
 
 ### Example Usage
 
@@ -130,6 +130,10 @@ Things you can ask Claude (or any MCP-aware assistant):
 - "Create a new document type called 'Bank Statement'"
 - "Empty the trash"
 - "Show me pending consumption tasks"
+- "Move every document from correspondent 'ACME GmbH (mail)' to 'ACME GmbH'"
+- "Remove the password from document #55 and keep the unlocked file as a new version"
+- "Create a workflow that strips PDF passwords from uploaded bank statements"
+- "Which mail rule is creating a new correspondent for every sender?"
 
 ## Available Tools
 
@@ -182,8 +186,13 @@ Tool names are **verb-first**, so wildcard-based permission rules group cleanly 
 | `mcp__paperless__update_*` | Per-item PATCH updates |
 | `mcp__paperless__edit_*_bulk` | All bulk-edit operations across entity types |
 | `mcp__paperless__delete_*` | ⚠️ Destructive — system-wide deletes |
+| `mcp__paperless__test_*` | Dry-run checks: `test_storage_path`, `test_mail_account` |
+| `mcp__paperless__upload_*` | `upload_document_version` |
+| `mcp__paperless__rebuild_*` | `rebuild_share_link_bundle` |
+| `mcp__paperless__merge_*` | ⚠️ `merge_documents_as_versions` — merged documents stop existing on their own |
+| `mcp__paperless__process_*` | `process_mail_account` — fetches mail now and runs its rules (which may delete or move mail on the server) |
 
-A read-only allowlist is therefore: `list_*`, `get_*`, `search_*`, `download_*`. Write access without destructive operations: add `create_*`, `update_*`, `edit_*_bulk`, `post_document`, `email_document`. `delete_*` and `empty_trash` should require explicit user approval.
+A read-only allowlist is therefore: `list_*`, `get_*`, `search_*`, `download_*`, `test_*`. Write access without destructive operations: add `create_*`, `update_*`, `edit_*_bulk`, `upload_*`, `rebuild_*`, `post_document`, `email_document`, `restore_from_trash`, `acknowledge_tasks`. `delete_*`, `merge_*`, `process_*` and `empty_trash` should require explicit user approval.
 
 ## Prompts
 
@@ -203,7 +212,7 @@ Argument:
 Perform bulk operations on multiple documents.
 
 Parameters:
-- Selection: `documents` (array of IDs), **or** `all: true` + `filters` (list_documents wire filters, e.g. `{ correspondent__id: 12 }`) with optional `excluded_documents`
+- Selection: `documents` (array of IDs), **or** `all: true` + `filters` with optional `excluded_documents`. `filters` takes Paperless document filter names such as `correspondent__id`, `tags__id__all`, `document_type__id`, `title_content` or `query` — not `list_documents`' tool arguments. Keys Paperless doesn't know are refused (it would otherwise ignore them and select every document), a preview query catches invalid values, and the result reports `matched_documents`. `all: true` isn't supported for `merge`, `split`, `delete_pages`, `edit_pdf` or `remove_password`.
 - `method`: one of `set_correspondent`, `set_document_type`, `set_storage_path`, `add_tag`, `remove_tag`, `modify_tags`, `modify_custom_fields`, `delete`, `reprocess`, `set_permissions`, `merge`, `split`, `rotate`, `delete_pages`, `edit_pdf`, `remove_password`
 - Method-specific parameters: `correspondent`, `document_type`, `storage_path`, `tag`, `add_tags`, `remove_tags`, `add_custom_fields`, `remove_custom_fields`, `set_permissions`, `owner`, `merge`, `metadata_document_id`, `delete_originals`, `pages`, `degrees`, `operations`, `update_document`, `include_metadata`, `password`, `delete_original`, `remote_ocr`
 
@@ -237,6 +246,20 @@ edit_documents_bulk({ all: true, filters: { correspondent__id: 12 }, method: "se
 edit_documents_bulk({ documents: [55], method: "remove_password", password: "…", update_document: true })
 ```
 
+Paperless answers `remove_password` with `OK` even when it skips a document (its latest version isn't encrypted) or the password is wrong, so check the document's `versions` afterwards.
+
+#### Workflows
+
+A workflow — its triggers plus the actions they run — is what Paperless executes; `create_workflow` builds one in a single call. Standalone triggers and actions (`create_workflow_trigger` / `create_workflow_action`) do nothing on their own, and Paperless deletes unattached ones whenever any workflow is updated.
+
+- Action types: 1 assignment, 2 removal, 3 email, 4 webhook, 5 password removal, 6 move to trash, 7 remote OCR, 8 apply AI suggestions. Remote OCR needs a consumption-started trigger; AI suggestions need a trigger other than consumption-started.
+- `update_workflow` changes only what you pass — but a `triggers` or `actions` list **replaces** the whole list: entries with an `id` are updated, entries without one are created, and omitted ones are deleted. `get_workflow` output can be edited and sent straight back.
+- PDF passwords of password-removal actions are always returned masked (`**********`). Sending the masked list back keeps the stored passwords; a new action needs the real ones.
+
+#### Document versions
+
+`upload_document_version` adds a new file to an existing document (a signed copy, a corrected scan), and `merge_documents_as_versions` folds duplicate documents into one. Content, search, downloads and `get_document_metadata` follow the latest version, but `page_count` and the file names on `get_document` describe the original (root) version — check `get_document_content` to see whether the current version is readable.
+
 #### `post_document`
 
 Upload a new document.
@@ -249,7 +272,7 @@ Upload is asynchronous. By default the tool returns a task UUID (track it with `
 
 #### Matching algorithms
 
-`create_tag`, `create_correspondent`, `create_document_type`, and `create_storage_path` accept a `matching_algorithm` (0–6):
+`create_tag`, `create_correspondent`, `create_document_type`, and `create_storage_path` accept a `matching_algorithm` (0–6). Workflow triggers accept 0–5 (no Automatic):
 
 | Value | Meaning |
 |---|---|
@@ -260,6 +283,8 @@ Upload is asynchronous. By default the tool returns a task UUID (track it with `
 | 4 | Regular expression |
 | 5 | Fuzzy word |
 | 6 | Automatic |
+
+Since Paperless-ngx 3.2, Automatic matching only assigns when the classifier is confident enough (`PAPERLESS_CLASSIFIER_MATCH_THRESHOLD`, default 0.6), and regular-expression matching gives up after `PAPERLESS_MATCH_REGEX_TIMEOUT_SECONDS` (default 0.1 s) — raise it if regex rules miss on long documents.
 
 ## Running the MCP Server
 
@@ -308,7 +333,8 @@ Because sessions live in memory, `--http` only works for **single-instance** dep
 Tool calls return clear errors when:
 - `PAPERLESS_URL` or `PAPERLESS_API_KEY` is missing or wrong
 - The Paperless-NGX server is unreachable
-- The underlying API rejects the operation
+- The underlying API rejects the operation — Paperless's own message is passed through (e.g. `{"non_field_errors":["password not specified"]} (HTTP 400)`), while HTML error pages are reduced to the status line
+- A Paperless call doesn't finish within 90 seconds (downloads are exempt); for a timed-out write the error warns that the change may already have been applied
 - Tool parameters fail validation
 
 ## Development

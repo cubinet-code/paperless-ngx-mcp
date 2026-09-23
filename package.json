@@ -2,7 +2,7 @@
   "name": "paperless-ngx-mcp",
   "mcpName": "io.github.cubinet-code/paperless-ngx-mcp",
   "version": "3.2.0",
-  "description": "Model Context Protocol (MCP) server for Paperless-NGX. Lets AI assistants manage documents, tags, correspondents, document types, custom fields, saved views, storage paths, workflows, share links, notes, trash, and tasks via the Paperless-NGX REST API.",
+  "description": "Model Context Protocol (MCP) server for Paperless-NGX. Lets AI assistants manage documents and their versions, tags, correspondents, document types, custom fields, saved views, storage paths, workflows, mail accounts and rules, share links and bundles, notes, trash, and tasks via the Paperless-NGX REST API.",
   "main": "build/index.js",
   "bin": {
     "paperless-ngx-mcp": "build/index.js"
