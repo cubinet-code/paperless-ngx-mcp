@@ -69,4 +69,19 @@ describe("list_documents (e2e) — 3.2 filters", () => {
     const one = await harness.callTool<Record<string, unknown>>("get_document", { id: a, fields: ["title"] });
     assert.deepEqual(Object.keys(one).sort(), ["id", "title"]);
   });
+
+  test("get_document_content reads a slice and reports the total length", async () => {
+    const { id, title } = await seedDocument(token, "content-slice");
+
+    const full = await harness.callTool<{ content: string }>("get_document_content", { id });
+    const part = await harness.callTool<{ content: string; offset: number; total_chars: number; truncated: boolean }>(
+      "get_document_content",
+      { id, max_chars: 5 }
+    );
+
+    assert.match(full.content, new RegExp(title.slice(0, 12)));
+    assert.equal(part.content, full.content.slice(0, 5));
+    assert.equal(part.total_chars, full.content.length);
+    assert.equal(part.truncated, full.content.length > 5);
+  });
 });

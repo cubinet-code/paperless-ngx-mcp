@@ -677,3 +677,42 @@ describe("list_documents / get_document — ids and fields", () => {
     assert.deepEqual(getTextContent(result), { id: 3, title: "t" });
   });
 });
+
+describe("get_document_content — partial reads", () => {
+  const text = "0123456789abcdefghij";
+  function contentApi() {
+    const seen: unknown[] = [];
+    const api = createMockApi({
+      getDocument: async (_id: number, fields?: string[]) => {
+        seen.push(fields);
+        return { id: 9, title: "t", content: text };
+      },
+    });
+    const { server, tools } = createMockServer();
+    registerDocumentTools(server, api);
+    return { tool: tools.get("get_document_content")!, seen };
+  }
+
+  test("max_chars returns the start and says how much is left", async () => {
+    const { tool, seen } = contentApi();
+
+    const body = getTextContent(await tool.callback({ id: 9, max_chars: 10 }));
+
+    assert.deepEqual(body, { id: 9, title: "t", content: "0123456789", offset: 0, total_chars: 20, truncated: true });
+    assert.deepEqual(seen[0], ["id", "title", "content"]);
+  });
+
+  test("offset continues where the previous read stopped", async () => {
+    const { tool } = contentApi();
+
+    const body = getTextContent(await tool.callback({ id: 9, offset: 10, max_chars: 5 }));
+
+    assert.deepEqual(body, { id: 9, title: "t", content: "abcde", offset: 10, total_chars: 20, truncated: true });
+  });
+
+  test("without max_chars/offset the full text comes back as before", async () => {
+    const { tool } = contentApi();
+
+    assert.deepEqual(getTextContent(await tool.callback({ id: 9 })), { id: 9, title: "t", content: text });
+  });
+});

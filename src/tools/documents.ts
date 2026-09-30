@@ -428,25 +428,42 @@ export function registerDocumentTools(server: McpServer, api: PaperlessAPI) {
 
   server.tool(
     "get_document_content",
-    "Get the text content of a specific document by ID. Use this when you need to read or analyze the actual document text.",
+    "Get the text content of a specific document by ID. Use this when you need to read or analyze the actual document text. For long documents, read a slice with max_chars (and offset to continue) — e.g. max_chars: 2000 is usually enough to identify a document. Paperless stores the text without page boundaries, so slices are by characters, not pages.",
     {
       id: z.number(),
+      max_chars: z
+        .number()
+        .int()
+        .min(1)
+        .optional()
+        .describe("Return at most this many characters; the result then includes total_chars and truncated"),
+      offset: z
+        .number()
+        .int()
+        .min(0)
+        .optional()
+        .describe("Start at this character (default 0) — continue a previous partial read"),
     },
     Annotations.READ,
     withErrorHandling(async (args) => {
-      const doc = await api.getDocument(args.id);
-      return {
-        content: [
-          {
-            type: "text",
-            text: JSON.stringify({
-              id: doc.id,
-              title: doc.title,
-              content: doc.content,
-            }),
-          },
-        ],
-      };
+      const doc = await api.getDocument(args.id, ["id", "title", "content"]);
+      const json = (obj: unknown) => ({
+        content: [{ type: "text" as const, text: JSON.stringify(obj) }],
+      });
+      if (args.max_chars === undefined && args.offset === undefined) {
+        return json({ id: doc.id, title: doc.title, content: doc.content });
+      }
+      const text = doc.content ?? "";
+      const offset = args.offset ?? 0;
+      const end = args.max_chars === undefined ? text.length : offset + args.max_chars;
+      return json({
+        id: doc.id,
+        title: doc.title,
+        content: text.slice(offset, end),
+        offset,
+        total_chars: text.length,
+        truncated: end < text.length,
+      });
     })
   );
 
@@ -605,7 +622,7 @@ export function registerDocumentTools(server: McpServer, api: PaperlessAPI) {
       // tags is otherwise invisible.
       let tagChanges: { added: number[]; removed: number[] } | undefined;
       if (deltaTags || updateData.tags !== undefined) {
-        const before = (await api.getDocument(id)).tags;
+        const before = (await api.getDocument(id, ["id", "tags"])).tags;
         const after = deltaTags
           ? [
               ...before.filter((t) => !(remove_tags ?? []).includes(t)),
