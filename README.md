@@ -170,7 +170,7 @@ The server registers tools across twelve domains.
 `list_mail_accounts`, `get_mail_account`, `create_mail_account`, `update_mail_account`, `delete_mail_account`, `test_mail_account`, `process_mail_account`, `list_mail_rules`, `get_mail_rule`, `create_mail_rule`, `update_mail_rule`, `delete_mail_rule`
 
 ### System / Notes / Trash / Tasks
-`get_statistics`, `get_system_status`, `list_document_notes`, `create_document_note`, `delete_document_note`, `list_trash`, `restore_from_trash`, `empty_trash`, `list_tasks`, `list_active_tasks`, `get_task_status_counts`, `get_task_summary`, `acknowledge_tasks`
+`get_statistics`, `get_system_status`, `get_filing_options`, `list_document_notes`, `create_document_note`, `delete_document_note`, `list_trash`, `restore_from_trash`, `empty_trash`, `list_tasks`, `list_active_tasks`, `get_task_status_counts`, `get_task_summary`, `acknowledge_tasks`
 
 ### Tool naming convention (for permission allowlists)
 
@@ -255,10 +255,19 @@ A workflow — its triggers plus the actions they run — is what Paperless exec
 - Action types: 1 assignment, 2 removal, 3 email, 4 webhook, 5 password removal, 6 move to trash, 7 remote OCR, 8 apply AI suggestions. Remote OCR needs a consumption-started trigger; AI suggestions need a trigger other than consumption-started.
 - `update_workflow` changes only what you pass — but a `triggers` or `actions` list **replaces** the whole list: entries with an `id` are updated, entries without one are created, and omitted ones are deleted. `get_workflow` output can be edited and sent straight back.
 - PDF passwords of password-removal actions are always returned masked (`**********`). Sending the masked list back keeps the stored passwords; a new action needs the real ones.
+- Which filters a trigger checks depends on its type: `sources`, `filter_path` and `filter_mailrule` only work on consumption-started triggers (type 1); tag/correspondent/type/storage-path filters, `filter_custom_field_query` and content matching only on added/updated/scheduled (types 2–4); `filter_filename` on every type.
 
 #### Document versions
 
 `upload_document_version` adds a new file to an existing document (a signed copy, a corrected scan), and `merge_documents_as_versions` folds duplicate documents into one. Content, search, downloads and `get_document_metadata` follow the latest version, but `page_count` and the file names on `get_document` describe the original (root) version — check `get_document_content` to see whether the current version is readable.
+
+#### Reading and editing single documents
+
+- `get_filing_options` returns every tag, correspondent, document type, storage path and custom field (id + name) in one call — fetch it once before filing instead of guessing IDs.
+- `update_document` takes `add_tags` / `remove_tags` to change single tags without touching the rest. `tags` replaces the whole list. Every tag change returns `tag_changes: { added, removed }`.
+- `list_documents` takes `ids` to read several known documents in one call, and `fields` (on `get_document` too) to return only what you need, e.g. `["title", "tags"]`.
+- `get_document_content` takes `max_chars` and `offset` for long documents; the result then reports `total_chars` and `truncated`. Paperless stores the text without page boundaries, so slices are by characters.
+- `search_documents` searches the full-text index (`mode`: `query` for advanced syntax — the default, `text` for plain words, `title` for titles only). The index can lag behind; `list_documents` with `search` matches substrings straight from the database.
 
 #### `post_document`
 

@@ -2,6 +2,22 @@
 
 All notable changes to this project are documented here. Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/); versioning follows [SemVer](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Added
+
+- **`get_filing_options`:** every tag, correspondent, document type, storage path and custom field (id + name) in one call, so an agent can choose from the complete set before filing.
+- **`update_document` `add_tags` / `remove_tags`** change single tags and keep the rest. Every tag change — including a wholesale `tags` replace — now returns `tag_changes: { added, removed }`, so a dropped tag is visible.
+- **`list_documents` `ids`** (Paperless `id__in`) reads several known documents in one call.
+- **`fields`** on `list_documents` and `get_document` returns only the requested fields (id is always included).
+- **`get_document_content` `max_chars` / `offset`** for partial reads of long documents, with `total_chars` and `truncated` in the result.
+- **`search_documents` `mode`:** `query` (advanced syntax, the default), `text` (plain words) or `title` (titles only).
+
+### Changed
+
+- `search_documents` with no hits now says so and points to `list_documents` `search`, which matches substrings straight from the database when the full-text index lags behind.
+- Tool descriptions now say which workflow trigger filters apply to which trigger types (`sources`, `filter_path` and `filter_mailrule` only on consumption-started triggers; tag/correspondent/type filters, custom-field queries and content matching only on types 2–4; `filter_filename` on all), explain what `list_documents` `search` matches, and note that Paperless sanitises file names derived from titles.
+
 ## [3.2.0] — 2026-09-24
 
 Aligns the tool surface with **Paperless-ngx 3.2** and drops support for older Paperless versions.
