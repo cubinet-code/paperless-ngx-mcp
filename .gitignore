@@ -17,3 +17,6 @@ build/
 
 # Local Claude Code project guidance (per-developer, not committed)
 CLAUDE.md
+
+# Launch kit (local marketing drafts and demo assets, not committed)
+docs/launch/
