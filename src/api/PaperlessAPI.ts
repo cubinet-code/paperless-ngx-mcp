@@ -222,9 +222,15 @@ export class PaperlessAPI {
     });
   }
 
-  async searchDocuments(query: string): Promise<DocumentsResponse> {
+  async searchDocuments(
+    query: string,
+    mode: "query" | "text" | "title" = "query"
+  ): Promise<DocumentsResponse> {
+    // Paperless's full-text parameters: `query` (advanced syntax), `text`
+    // (plain words) and `title_search` (titles only).
+    const param = mode === "title" ? "title_search" : mode;
     return this.request<DocumentsResponse>(
-      `/documents/?query=${encodeURIComponent(query)}`
+      `/documents/?${param}=${encodeURIComponent(query)}`
     );
   }
 

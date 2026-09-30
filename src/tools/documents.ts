@@ -370,7 +370,10 @@ export function registerDocumentTools(server: McpServer, api: PaperlessAPI) {
         .optional()
         .describe("Only these document IDs — read several known documents in one call"),
       fields: documentFieldsParam,
-      search: z.string().optional(),
+      search: z
+        .string()
+        .optional()
+        .describe("Case-insensitive substring match on title, correspondent name and content, read straight from the database (always current, unranked); every word must appear. For ranked full-text search with query syntax use search_documents."),
       correspondent: z.number().optional(),
       document_type: z.number().optional(),
       tag: z.number().optional(),
@@ -469,13 +472,27 @@ export function registerDocumentTools(server: McpServer, api: PaperlessAPI) {
 
   server.tool(
     "search_documents",
-    "Full text search for documents. This tool is for searching document content, title, and metadata using a full text query. For general document listing or filtering by fields, use 'list_documents' instead. Note: Document content is excluded from results by default. Use 'get_document_content' to retrieve content when needed.",
+    "Ranked full-text search through Paperless's search index (content, title and metadata). mode 'query' (default) takes advanced syntax — AND/OR/NOT, \"quoted phrases\", field:value, wildcards*; 'text' takes plain words with no syntax; 'title' searches titles only. The index is updated in the background and can lag behind or miss documents: if you expect matches but get none, use list_documents with `search`, which scans the database directly. For filtering by tag, correspondent, type or date use list_documents. Content is excluded from results; use get_document_content.",
     {
       query: z.string(),
+      mode: z
+        .enum(["query", "text", "title"])
+        .optional()
+        .describe("query = advanced syntax (default), text = plain words, title = titles only"),
     },
     Annotations.READ,
     withErrorHandling(async (args) => {
-      const docsResponse = await api.searchDocuments(args.query);
+      const docsResponse = await api.searchDocuments(args.query, args.mode);
+      if ((docsResponse.results ?? []).length === 0) {
+        return {
+          content: [
+            {
+              type: "text",
+              text: "No documents found in the full-text index. The index can lag behind or miss documents — to check the database directly, use list_documents with `search` (substring match on title, correspondent and content).",
+            },
+          ],
+        };
+      }
       return convertDocsWithNames(docsResponse, api);
     })
   );

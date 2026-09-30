@@ -716,3 +716,50 @@ describe("get_document_content — partial reads", () => {
     assert.deepEqual(getTextContent(await tool.callback({ id: 9 })), { id: 9, title: "t", content: text });
   });
 });
+
+describe("search_documents — modes and empty results", () => {
+  function searchApi(results: unknown[] = []) {
+    const calls: Array<[string, string | undefined]> = [];
+    const api = createMockApi({
+      searchDocuments: async (query: string, mode?: string) => {
+        calls.push([query, mode]);
+        return { count: results.length, next: null, previous: null, results };
+      },
+    });
+    const { server, tools } = createMockServer();
+    registerDocumentTools(server, api);
+    return { tool: tools.get("search_documents")!, calls };
+  }
+
+  test("mode is passed through (query by default)", async () => {
+    const { tool, calls } = searchApi();
+    await tool.callback({ query: "rechnung 2026" });
+    await tool.callback({ query: "rechnung 2026", mode: "text" });
+    await tool.callback({ query: "rechnung", mode: "title" });
+
+    assert.deepEqual(calls, [
+      ["rechnung 2026", undefined],
+      ["rechnung 2026", "text"],
+      ["rechnung", "title"],
+    ]);
+  });
+
+  test("an empty result points at list_documents search", async () => {
+    const { tool } = searchApi([]);
+
+    const result = await tool.callback({ query: "nothing here" });
+    const text = (result.content[0] as { text: string }).text;
+
+    assert.match(text, /No documents found/);
+    assert.match(text, /list_documents/);
+  });
+
+  test("the list_documents search argument explains what it matches", () => {
+    const { server, tools } = createMockServer();
+    registerDocumentTools(server, createMockApi({}));
+    const shape = tools.get("list_documents")!.schema as z.ZodRawShape;
+
+    assert.match(String(shape.search.description), /substring/i);
+    assert.match(String(shape.search.description), /search_documents/);
+  });
+});

@@ -260,4 +260,38 @@ describe("PaperlessAPI", () => {
       assert.equal(await messageFor("/missing/"), "No Document matches the given query. (HTTP 404)");
     });
   });
+
+  describe("searchDocuments", () => {
+    let server: HttpServer;
+    let port: number;
+    const urls: string[] = [];
+
+    before(async () => {
+      server = createHttpServer((req: IncomingMessage, res: ServerResponse) => {
+        urls.push(req.url ?? "");
+        res.writeHead(200, { "Content-Type": "application/json" });
+        res.end('{"count":0,"next":null,"previous":null,"results":[]}');
+      });
+      await new Promise<void>((resolve) => server.listen(0, "127.0.0.1", resolve));
+      port = (server.address() as { port: number }).port;
+    });
+
+    after(async () => {
+      await new Promise<void>((resolve) => server.close(() => resolve()));
+    });
+
+    test("maps each mode to Paperless's full-text parameter", async () => {
+      const api = new PaperlessAPI(`http://127.0.0.1:${port}`, "t");
+
+      await api.searchDocuments("a b");
+      await api.searchDocuments("a b", "text");
+      await api.searchDocuments("a", "title");
+
+      assert.deepEqual(urls, [
+        "/api/documents/?query=a%20b",
+        "/api/documents/?text=a%20b",
+        "/api/documents/?title_search=a",
+      ]);
+    });
+  });
 });

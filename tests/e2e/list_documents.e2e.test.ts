@@ -2,7 +2,7 @@ import { before, test, describe } from "node:test";
 import assert from "node:assert/strict";
 import { createHarness, type E2EHarness } from "./harness";
 import { ensureCustomField, seed } from "./setup/seed";
-import { buildMinimalPdf, seedDocument, uploadDocument } from "./setup/document";
+import { buildMinimalPdf, eventually, seedDocument, uploadDocument } from "./setup/document";
 
 const BASE_URL = process.env.PAPERLESS_E2E_URL ?? "http://localhost:8001";
 
@@ -83,5 +83,19 @@ describe("list_documents (e2e) — 3.2 filters", () => {
     assert.equal(part.content, full.content.slice(0, 5));
     assert.equal(part.total_chars, full.content.length);
     assert.equal(part.truncated, full.content.length > 5);
+  });
+
+  test("search_documents text and title modes find a freshly indexed document", async () => {
+    const { id, title } = await seedDocument(token, "zebrafinch");
+    type Hits = { results: Array<{ id: number }> };
+
+    const byText = await eventually(async () => {
+      const r = await harness.callTool<Hits>("search_documents", { query: "zebrafinch", mode: "text" }).catch(() => undefined);
+      return r?.results.some((d) => d.id === id) ? r : undefined;
+    }, 60_000);
+    assert.ok(byText.results.some((d) => d.id === id));
+
+    const byTitle = await harness.callTool<Hits>("search_documents", { query: title.split("-")[0], mode: "title" });
+    assert.ok(byTitle.results.some((d) => d.id === id));
   });
 });
