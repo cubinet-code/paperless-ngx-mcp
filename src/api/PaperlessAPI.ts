@@ -204,8 +204,9 @@ export class PaperlessAPI {
     return this.request<DocumentsResponse>(`/documents/${query}`);
   }
 
-  async getDocument(id: number): Promise<Document> {
-    return this.request<Document>(`/documents/${id}/`);
+  async getDocument(id: number, fields?: string[]): Promise<Document> {
+    const query = fields?.length ? `?fields=${fields.join(",")}` : "";
+    return this.request<Document>(`/documents/${id}/${query}`);
   }
 
   async updateDocument(id: number, data: Partial<Document>): Promise<Document> {

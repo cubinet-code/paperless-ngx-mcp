@@ -48,4 +48,25 @@ describe("list_documents (e2e) — 3.2 filters", () => {
     assert.ok(ids.includes(first) && ids.includes(second), `expected ${first} and ${second} in ${ids}`);
     assert.ok(!ids.includes(docId), "the unique seed document must not be listed as a duplicate");
   });
+
+  test("ids + fields return exactly those documents with only the requested fields", async () => {
+    const [{ id: a }, { id: b }] = await Promise.all([
+      seedDocument(token, "ids-fields-a"),
+      seedDocument(token, "ids-fields-b"),
+    ]);
+
+    const res = await harness.callTool<{ count: number; results: Array<Record<string, unknown>> }>("list_documents", {
+      ids: [a, b],
+      fields: ["title", "tags"],
+    });
+
+    assert.equal(res.count, 2);
+    assert.deepEqual(res.results.map((d) => d.id).sort(), [a, b].sort());
+    for (const doc of res.results) {
+      assert.deepEqual(Object.keys(doc).sort(), ["id", "tags", "title"]);
+    }
+
+    const one = await harness.callTool<Record<string, unknown>>("get_document", { id: a, fields: ["title"] });
+    assert.deepEqual(Object.keys(one).sort(), ["id", "title"]);
+  });
 });

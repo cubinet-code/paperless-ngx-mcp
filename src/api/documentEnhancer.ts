@@ -70,10 +70,12 @@ export async function enhanceDocumentsArray(
     return [];
   }
 
-  const needsCorrespondents = documents.some((d) => d.correspondent !== null);
-  const needsDocumentTypes = documents.some((d) => d.document_type !== null);
-  const needsTags = documents.some((d) => d.tags.length > 0);
-  const needsCustomFields = documents.some((d) => d.custom_fields.length > 0);
+  // Fields can be missing when the caller asked for a subset (`fields`), so
+  // only resolve names for fields that are present.
+  const needsCorrespondents = documents.some((d) => d.correspondent != null);
+  const needsDocumentTypes = documents.some((d) => d.document_type != null);
+  const needsTags = documents.some((d) => (d.tags?.length ?? 0) > 0);
+  const needsCustomFields = documents.some((d) => (d.custom_fields?.length ?? 0) > 0);
 
   const emptyMap = <K, V>() => new Map<K, V>();
   const buildMap = <T extends { id: number; name: string }>(
@@ -101,33 +103,40 @@ export async function enhanceDocumentsArray(
 
   return documents.map((doc) => {
     const { content, notes, ...slim } = doc;
-    return {
-      ...slim,
-      correspondent: doc.correspondent
+    const enhanced: Record<string, unknown> = { ...slim };
+    if ("correspondent" in doc) {
+      enhanced.correspondent = doc.correspondent
         ? {
             id: doc.correspondent,
             name:
               correspondentMap.get(doc.correspondent) ||
               String(doc.correspondent),
           }
-        : null,
-      document_type: doc.document_type
+        : null;
+    }
+    if ("document_type" in doc) {
+      enhanced.document_type = doc.document_type
         ? {
             id: doc.document_type,
             name:
               documentTypeMap.get(doc.document_type) ||
               String(doc.document_type),
           }
-        : null,
-      tags: doc.tags.map((tagId) => ({
+        : null;
+    }
+    if ("tags" in doc) {
+      enhanced.tags = doc.tags.map((tagId) => ({
         id: tagId,
         name: tagMap.get(tagId) || String(tagId),
-      })),
-      custom_fields: doc.custom_fields.map((field) => ({
+      }));
+    }
+    if ("custom_fields" in doc) {
+      enhanced.custom_fields = doc.custom_fields.map((field) => ({
         field: field.field,
         name: customFieldMap.get(field.field) || String(field.field),
         value: field.value,
-      })),
-    };
+      }));
+    }
+    return enhanced as unknown as EnhancedDocument;
   });
 }

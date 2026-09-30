@@ -616,3 +616,64 @@ describe("update_document — safe tag edits", () => {
     assert.deepEqual(parsed, { id: 5, add_tags: [4], remove_tags: [2] });
   });
 });
+
+describe("list_documents / get_document — ids and fields", () => {
+  test("ids become id__in and fields always include id", async () => {
+    let query = "";
+    const api = createMockApi({
+      getDocuments: async (q: string) => {
+        query = q;
+        return { count: 0, next: null, previous: null, results: [] };
+      },
+    });
+    const { server, tools } = createMockServer();
+    registerDocumentTools(server, api);
+    const tool = tools.get("list_documents")!;
+
+    await tool.callback(getZodSchemaShape(tool.schema).parse({ ids: [3, 5], fields: ["title", "tags"] }));
+
+    const params = new URLSearchParams(query.replace(/^\?/, ""));
+    assert.equal(params.get("id__in"), "3,5");
+    assert.equal(params.get("fields"), "id,title,tags");
+  });
+
+  test("a trimmed document only gets names for the fields it has", async () => {
+    // getCorrespondents / getDocumentTypes / getCustomFields are not mocked,
+    // so calling them would throw.
+    const api = createMockApi({
+      getDocuments: async () => ({
+        count: 1,
+        next: null,
+        previous: null,
+        results: [{ id: 3, title: "t", tags: [1] }],
+      }),
+      getTags: async () => ({ count: 1, next: null, previous: null, results: [{ id: 1, name: "Inbox" }] }),
+    });
+    const { server, tools } = createMockServer();
+    registerDocumentTools(server, api);
+    const tool = tools.get("list_documents")!;
+
+    const result = await tool.callback(getZodSchemaShape(tool.schema).parse({ fields: ["title", "tags"] }));
+    const body = getTextContent(result) as { results: Array<Record<string, unknown>> };
+
+    assert.deepEqual(body.results[0], { id: 3, title: "t", tags: [{ id: 1, name: "Inbox" }] });
+  });
+
+  test("get_document passes fields through", async () => {
+    let seen: unknown;
+    const api = createMockApi({
+      getDocument: async (_id: number, fields?: string[]) => {
+        seen = fields;
+        return { id: 3, title: "t" };
+      },
+    });
+    const { server, tools } = createMockServer();
+    registerDocumentTools(server, api);
+    const tool = tools.get("get_document")!;
+
+    const result = await tool.callback(getZodSchemaShape(tool.schema).parse({ id: 3, fields: ["title"] }));
+
+    assert.deepEqual(seen, ["id", "title"]);
+    assert.deepEqual(getTextContent(result), { id: 3, title: "t" });
+  });
+});

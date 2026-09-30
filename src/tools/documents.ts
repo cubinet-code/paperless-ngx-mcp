@@ -34,6 +34,29 @@ function getContentDispositionHeader(headers: unknown): string | null {
 const REMOVE_PASSWORD_NOTE =
   "Paperless reports OK even when it skips a document whose latest version is not encrypted, or when the password is wrong. A successful unlock adds a new version (update_document=true) or a new document within seconds — check get_document's versions, or list_tasks with task_type consume_file.";
 
+// Document fields a caller can ask for with `fields` (Paperless's
+// DocumentSerializer). content and notes are left out: list and get never
+// return them — get_document_content does.
+const DOCUMENT_FIELDS = [
+  "id", "title", "correspondent", "document_type", "storage_path", "tags",
+  "created", "created_date", "modified", "added", "deleted_at",
+  "archive_serial_number", "original_file_name", "archived_file_name",
+  "duplicate_documents", "owner", "permissions", "user_can_change",
+  "is_shared_by_requester", "custom_fields", "page_count", "mime_type",
+  "root_document", "versions",
+] as const;
+
+const documentFieldsParam = z
+  .array(z.enum(DOCUMENT_FIELDS))
+  .min(1)
+  .optional()
+  .describe(
+    "Return only these fields to keep the response small, e.g. [\"title\", \"tags\"]. id is always included."
+  );
+
+const withId = (fields?: readonly string[]) =>
+  fields ? ["id", ...fields.filter((f) => f !== "id")] : undefined;
+
 export function registerDocumentTools(server: McpServer, api: PaperlessAPI) {
   server.tool(
     "edit_documents_bulk",
@@ -341,6 +364,12 @@ export function registerDocumentTools(server: McpServer, api: PaperlessAPI) {
     "List and filter documents by fields such as title, correspondent, document type, tag, storage path, creation date, and more. IMPORTANT: For queries like 'the last 3 contributions' or when searching by tag, correspondent, document type, or storage path, you should FIRST use the relevant tool (e.g., 'list_tags', 'list_correspondents', 'list_document_types', 'list_storage_paths') to find the correct ID, and then use that ID as a filter here. Only use the 'search' argument for free-text search when no specific field applies. Using the correct ID filter will yield much more accurate results. Note: Document content is excluded from results by default. Use 'get_document_content' to retrieve content when needed. To find near-duplicates of one document use more_like_id; to list everything Paperless has flagged as a duplicate use has_duplicates=true.",
     {
       ...paginationFields,
+      ids: z
+        .array(z.number())
+        .min(1)
+        .optional()
+        .describe("Only these document IDs — read several known documents in one call"),
+      fields: documentFieldsParam,
       search: z.string().optional(),
       correspondent: z.number().optional(),
       document_type: z.number().optional(),
@@ -363,10 +392,14 @@ export function registerDocumentTools(server: McpServer, api: PaperlessAPI) {
         document_type,
         tag,
         storage_path,
+        ids,
+        fields,
         ...rest
       } = args;
       const queryString = buildQueryString({
         ...rest,
+        id__in: ids?.join(","),
+        fields: withId(fields)?.join(","),
         correspondent__id: correspondent,
         document_type__id: document_type,
         tags__id: tag,
@@ -384,10 +417,11 @@ export function registerDocumentTools(server: McpServer, api: PaperlessAPI) {
     "Get a specific document by ID with full details including correspondent, document type, tags, and custom fields. Note: Document content is excluded from results by default. Use 'get_document_content' to retrieve content when needed. Documents can have several file versions (`versions`; manage them with upload_document_version / update_document_version / delete_document_version). Content (get_document_content) and get_document_metadata follow the LATEST version, but page_count, original_file_name and archived_file_name always describe the ROOT (first) version — e.g. after a password-protected PDF was unlocked into a new version, page_count stays null. Don't use page_count to judge whether a document is readable; check its content.",
     {
       id: z.number(),
+      fields: documentFieldsParam,
     },
     Annotations.READ,
     withErrorHandling(async (args) => {
-      const doc = await api.getDocument(args.id);
+      const doc = await api.getDocument(args.id, withId(args.fields));
       return convertDocsWithNames(doc, api);
     })
   );
