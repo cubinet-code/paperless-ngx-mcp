@@ -1,6 +1,6 @@
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp";
 import { z } from "zod";
-import { convertDocsWithNames } from "../api/documentEnhancer";
+import { convertDocsWithNames, enhanceDocumentsArray } from "../api/documentEnhancer";
 import { PaperlessAPI } from "../api/PaperlessAPI";
 import { BulkEditParameters, Document } from "../api/types";
 import { Annotations } from "./utils/annotations";
@@ -484,7 +484,7 @@ export function registerDocumentTools(server: McpServer, api: PaperlessAPI) {
 
   server.tool(
     "update_document",
-    "Update fields on ONE document (PATCH — only fields you supply are changed). Editable fields: title, correspondent, document_type, storage_path, tags (replaces the array), content (raw searchable text), created (document date, YYYY-MM-DD), archive_serial_number, owner, custom_fields. For applying the same change to MANY documents, see edit_documents_bulk. To add a comment/annotation rather than change a field, see create_document_note.",
+    "Update fields on ONE document (PATCH — only fields you supply are changed). To change tags, prefer add_tags / remove_tags: they leave the other tags alone. `tags` REPLACES the whole list — any tag you leave out is removed. Every tag change returns tag_changes {added, removed}. Editable fields: title, correspondent, document_type, storage_path, tags, add_tags, remove_tags, content (raw searchable text), created (document date, YYYY-MM-DD), archive_serial_number, owner, custom_fields. For applying the same change to MANY documents, see edit_documents_bulk. To add a comment/annotation rather than change a field, see create_document_note.",
     {
       id: z.number().describe("The ID of the document to update"),
       title: z
@@ -510,7 +510,15 @@ export function registerDocumentTools(server: McpServer, api: PaperlessAPI) {
       tags: z
         .array(z.number())
         .optional()
-        .describe("Array of tag IDs to assign to the document"),
+        .describe("REPLACES all tags with exactly this list — tags not listed are removed. To add or remove single tags use add_tags / remove_tags."),
+      add_tags: z
+        .array(z.number())
+        .optional()
+        .describe("Tag IDs to add; the document's other tags are kept"),
+      remove_tags: z
+        .array(z.number())
+        .optional()
+        .describe("Tag IDs to remove; the document's other tags are kept"),
       content: z
         .string()
         .optional()
@@ -548,13 +556,44 @@ export function registerDocumentTools(server: McpServer, api: PaperlessAPI) {
     },
     Annotations.UPDATE,
     withErrorHandling(async (args) => {
-      const { id, ...updateData } = args;
+      const { id, add_tags, remove_tags, ...updateData } = args;
+      const deltaTags = add_tags !== undefined || remove_tags !== undefined;
+      if (deltaTags && updateData.tags !== undefined) {
+        throw new Error(
+          "Pass either `tags` (replaces the whole list) or add_tags / remove_tags, not both."
+        );
+      }
 
       validateCustomFields(updateData.custom_fields);
 
+      // Read the current tags whenever tags change, so the result can show
+      // exactly what was added and removed — a wholesale replace that drops
+      // tags is otherwise invisible.
+      let tagChanges: { added: number[]; removed: number[] } | undefined;
+      if (deltaTags || updateData.tags !== undefined) {
+        const before = (await api.getDocument(id)).tags;
+        const after = deltaTags
+          ? [
+              ...before.filter((t) => !(remove_tags ?? []).includes(t)),
+              ...(add_tags ?? []).filter((t) => !before.includes(t)),
+            ]
+          : updateData.tags!;
+        updateData.tags = after;
+        tagChanges = {
+          added: after.filter((t) => !before.includes(t)),
+          removed: before.filter((t) => !after.includes(t)),
+        };
+      }
+
       const response = await api.updateDocument(id, updateData as Partial<Document>);
 
-      return convertDocsWithNames(response, api);
+      if (!tagChanges) return convertDocsWithNames(response, api);
+      const [enhanced] = await enhanceDocumentsArray([response], api);
+      return {
+        content: [
+          { type: "text", text: JSON.stringify({ ...enhanced, tag_changes: tagChanges }) },
+        ],
+      };
     })
   );
 

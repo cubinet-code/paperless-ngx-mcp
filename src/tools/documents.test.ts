@@ -526,3 +526,93 @@ describe("list_documents — 3.2 filters", () => {
     assert.doesNotMatch(String(shape.custom_field_query.description), /custom_field_123=value/);
   });
 });
+
+describe("update_document — safe tag edits", () => {
+  const doc = (tags: number[]) => ({
+    id: 5,
+    title: "t",
+    correspondent: null,
+    document_type: null,
+    tags,
+    custom_fields: [],
+    content: "",
+    notes: [],
+  });
+  const tagPage = {
+    count: 4,
+    next: null,
+    previous: null,
+    results: [1, 2, 3, 4].map((id) => ({ id, name: `tag-${id}` })),
+  };
+
+  function tagApi(current: number[]) {
+    const patched: Array<Record<string, unknown>> = [];
+    let reads = 0;
+    const api = createMockApi({
+      getDocument: async () => {
+        reads += 1;
+        return doc(current);
+      },
+      updateDocument: async (_id: number, data: Record<string, unknown>) => {
+        patched.push(data);
+        return doc((data.tags as number[]) ?? current);
+      },
+      getTags: async () => tagPage,
+    });
+    return { api, patched, reads: () => reads };
+  }
+
+  test("add_tags / remove_tags change only those tags and report the diff", async () => {
+    const { api, patched } = tagApi([1, 2, 3]);
+    const { server, tools } = createMockServer();
+    registerDocumentTools(server, api);
+
+    const result = await tools.get("update_document")!.callback({ id: 5, add_tags: [4], remove_tags: [2] });
+    const body = getTextContent(result) as { tags: Array<{ id: number }>; tag_changes: unknown };
+
+    assert.deepEqual(patched[0].tags, [1, 3, 4]);
+    assert.deepEqual(body.tag_changes, { added: [4], removed: [2] });
+    assert.deepEqual(body.tags.map((t) => t.id), [1, 3, 4]);
+  });
+
+  test("replacing `tags` wholesale also reports what was removed", async () => {
+    const { api } = tagApi([1, 2, 3]);
+    const { server, tools } = createMockServer();
+    registerDocumentTools(server, api);
+
+    const result = await tools.get("update_document")!.callback({ id: 5, tags: [3] });
+
+    assert.deepEqual((getTextContent(result) as { tag_changes: unknown }).tag_changes, { added: [], removed: [1, 2] });
+  });
+
+  test("tags together with add_tags/remove_tags is refused before any call", async () => {
+    const { api, patched, reads } = tagApi([1]);
+    const { server, tools } = createMockServer();
+    registerDocumentTools(server, api);
+
+    await assert.rejects(
+      () => tools.get("update_document")!.callback({ id: 5, tags: [1], add_tags: [2] }),
+      /either `tags`/
+    );
+    assert.equal(patched.length + reads(), 0);
+  });
+
+  test("an update without tag changes doesn't read the document first", async () => {
+    const { api, reads } = tagApi([1]);
+    const { server, tools } = createMockServer();
+    registerDocumentTools(server, api);
+
+    const result = await tools.get("update_document")!.callback({ id: 5, title: "new" });
+
+    assert.equal(reads(), 0);
+    assert.equal("tag_changes" in (getTextContent(result) as object), false);
+  });
+
+  test("add_tags and remove_tags are part of the tool schema", () => {
+    const { server, tools } = createMockServer();
+    registerDocumentTools(server, createMockApi({}));
+    const parsed = getZodSchemaShape(tools.get("update_document")!.schema).parse({ id: 5, add_tags: [4], remove_tags: [2] });
+
+    assert.deepEqual(parsed, { id: 5, add_tags: [4], remove_tags: [2] });
+  });
+});

@@ -62,7 +62,7 @@ export async function convertDocsWithNames(
   };
 }
 
-async function enhanceDocumentsArray(
+export async function enhanceDocumentsArray(
   documents: Document[],
   api: PaperlessAPI
 ): Promise<EnhancedDocument[]> {
