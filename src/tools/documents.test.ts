@@ -763,3 +763,14 @@ describe("search_documents — modes and empty results", () => {
     assert.match(String(shape.search.description), /search_documents/);
   });
 });
+
+describe("update_document — title vs file name", () => {
+  test("the title description warns that file names are sanitised", () => {
+    const { server, tools } = createMockServer();
+    registerDocumentTools(server, createMockApi({}));
+    const shape = tools.get("update_document")!.schema as z.ZodRawShape;
+
+    assert.match(String(shape.title.description), /archived_file_name/);
+  });
+});
+

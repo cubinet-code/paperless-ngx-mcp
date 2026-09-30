@@ -118,34 +118,34 @@ export const workflowTriggerFields = {
   sources: z
     .array(z.number().int().min(1).max(4))
     .optional()
-    .describe("Consumption sources: 1=consume folder, 2=API upload, 3=mail fetch, 4=web UI (default [1,2,3])"),
-  filter_path: z.string().max(256).nullable().optional().describe("Path pattern, * wildcards allowed"),
+    .describe("Consumption-started (type 1) triggers only: consumption sources 1=consume folder, 2=API upload, 3=mail fetch, 4=web UI (default [1,2,3])"),
+  filter_path: z.string().max(256).nullable().optional().describe("Consumption-started (type 1) triggers only: consume-folder path pattern, * wildcards allowed"),
   filter_filename: z
     .string()
     .max(256)
     .nullable()
     .optional()
-    .describe("Filename pattern (whole name must match), * wildcards allowed"),
-  filter_mailrule: z.number().nullable().optional().describe("Only documents fetched by this mail rule ID"),
+    .describe("Filename pattern (the whole name must match, case-insensitive), * wildcards allowed. Works for every trigger type: at consumption start it checks the incoming file's name, for types 2–4 the document's original file name."),
+  filter_mailrule: z.number().nullable().optional().describe("Consumption-started (type 1) triggers only: only documents fetched by this mail rule ID"),
   matching_algorithm: z
     .number()
     .int()
     .min(0)
     .max(5)
     .optional()
-    .describe("Content match for `match`: 0=none, 1=any word, 2=all words, 3=exact, 4=regular expression, 5=fuzzy word"),
+    .describe("Content match for `match`: 0=none, 1=any word, 2=all words, 3=exact, 4=regular expression, 5=fuzzy word. Checked for types 2–4 (added, updated, scheduled) only — not at consumption start, when the document has no content or metadata yet."),
   match: z.string().max(256).optional(),
   is_insensitive: z.boolean().optional(),
-  filter_has_tags: idList().describe("Document has ANY of these tags"),
-  filter_has_all_tags: idList().describe("Document has ALL of these tags"),
-  filter_has_not_tags: idList().describe("Document has NONE of these tags"),
-  filter_has_any_correspondents: idList().describe("Correspondent is one of these"),
-  filter_has_not_correspondents: idList().describe("Correspondent is none of these"),
-  filter_has_any_document_types: idList().describe("Document type is one of these"),
-  filter_has_not_document_types: idList().describe("Document type is none of these"),
-  filter_has_any_storage_paths: idList().describe("Storage path is one of these"),
-  filter_has_not_storage_paths: idList().describe("Storage path is none of these"),
-  filter_custom_field_query: z.string().nullable().optional().describe(CUSTOM_FIELD_QUERY_DESCRIPTION),
+  filter_has_tags: idList().describe("Document has ANY of these tags. Checked for types 2–4 (added, updated, scheduled) only — not at consumption start, when the document has no content or metadata yet."),
+  filter_has_all_tags: idList().describe("Document has ALL of these tags. Checked for types 2–4 (added, updated, scheduled) only — not at consumption start, when the document has no content or metadata yet."),
+  filter_has_not_tags: idList().describe("Document has NONE of these tags. Checked for types 2–4 (added, updated, scheduled) only — not at consumption start, when the document has no content or metadata yet."),
+  filter_has_any_correspondents: idList().describe("Correspondent is one of these. Checked for types 2–4 (added, updated, scheduled) only — not at consumption start, when the document has no content or metadata yet."),
+  filter_has_not_correspondents: idList().describe("Correspondent is none of these. Checked for types 2–4 (added, updated, scheduled) only — not at consumption start, when the document has no content or metadata yet."),
+  filter_has_any_document_types: idList().describe("Document type is one of these. Checked for types 2–4 (added, updated, scheduled) only — not at consumption start, when the document has no content or metadata yet."),
+  filter_has_not_document_types: idList().describe("Document type is none of these. Checked for types 2–4 (added, updated, scheduled) only — not at consumption start, when the document has no content or metadata yet."),
+  filter_has_any_storage_paths: idList().describe("Storage path is one of these. Checked for types 2–4 (added, updated, scheduled) only — not at consumption start, when the document has no content or metadata yet."),
+  filter_has_not_storage_paths: idList().describe("Storage path is none of these. Checked for types 2–4 (added, updated, scheduled) only — not at consumption start, when the document has no content or metadata yet."),
+  filter_custom_field_query: z.string().nullable().optional().describe(`${CUSTOM_FIELD_QUERY_DESCRIPTION} Checked for types 2–4 (added, updated, scheduled) only — not at consumption start, when the document has no content or metadata yet.`),
   schedule_offset_days: z.number().int().optional().describe("Type 4: days to offset from schedule_date_field"),
   schedule_is_recurring: z.boolean().optional(),
   schedule_recurring_interval_days: z.number().int().min(1).optional(),

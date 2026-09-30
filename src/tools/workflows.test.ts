@@ -155,3 +155,21 @@ describe("masked passwords sent back keep the stored ones", () => {
     assert.equal(calls.length, 0);
   });
 });
+
+describe("trigger filter descriptions say which trigger types use them", () => {
+  test("consumption-only, added/updated-only and all-type filters are labelled", () => {
+    const { server, tools } = createMockServer();
+    registerWorkflowTools(server, createMockApi({}));
+    const shape = tools.get("create_workflow_trigger")!.schema as Record<string, { description?: string }>;
+    const doc = (field: string) => String(shape[field].description);
+
+    for (const f of ["sources", "filter_path", "filter_mailrule"]) {
+      assert.match(doc(f), /type 1/i, f);
+    }
+    for (const f of ["filter_has_tags", "filter_has_any_correspondents", "filter_custom_field_query", "matching_algorithm"]) {
+      assert.match(doc(f), /types 2.4/i, f);
+    }
+    assert.match(doc("filter_filename"), /every trigger type/i);
+  });
+});
+

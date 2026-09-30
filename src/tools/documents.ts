@@ -559,7 +559,7 @@ export function registerDocumentTools(server: McpServer, api: PaperlessAPI) {
         .string()
         .max(128)
         .optional()
-        .describe("The new title for the document (max 128 characters)"),
+        .describe("The new title for the document (max 128 characters). Paperless also derives the stored file name from it and replaces characters that aren't allowed in file names (such as /), so archived_file_name can differ from the title."),
       correspondent: z
         .number()
         .nullable()
