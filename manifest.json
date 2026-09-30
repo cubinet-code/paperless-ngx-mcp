@@ -2,7 +2,7 @@
   "manifest_version": "0.3",
   "name": "paperless-ngx-mcp",
   "display_name": "Paperless-ngx",
-  "version": "3.2.0",
+  "version": "3.2.1",
   "description": "Search, tag, edit and upload documents in your Paperless-ngx instance.",
   "long_description": "Exposes the Paperless-ngx REST API to Claude: documents and their versions, tags, correspondents, document types, custom fields, storage paths, saved views, workflows, mail accounts and rules, share links and bundles, notes, trash and tasks. Includes a `triage_inbox` prompt that proposes metadata for inbox documents and applies it after you confirm.",
   "author": {

@@ -35,7 +35,7 @@ body:
     id: mcp_version
     attributes:
       label: paperless-ngx-mcp version
-      placeholder: "3.2.0"
+      placeholder: "3.2.1"
     validations:
       required: true
 

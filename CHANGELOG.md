@@ -2,21 +2,31 @@
 
 All notable changes to this project are documented here. Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/); versioning follows [SemVer](https://semver.org/spec/v2.0.0.html).
 
-## [Unreleased]
+## [3.2.1] — 2026-10-01
+
+Safer tag edits and fewer calls when an agent files or reads documents. Tested against **Paperless-ngx 3.2.1**, the latest Paperless release. No breaking changes: every new parameter is optional.
+
+**Upgrading:** start a new chat after updating. A chat that was already open can keep using the old tool definitions and won't see the new parameters.
+
+### Fixed
+
+- **`update_document` could silently drop tags.** `tags` replaces the document's whole tag list, and the tool didn't say so, so adding one tag from an incomplete list removed the others. The new `add_tags` / `remove_tags` change single tags and leave the rest alone; passing `tags` together with either is refused. Every tag change, including a full `tags` replace, now returns `tag_changes: { added, removed }`, so a dropped tag shows up in the result.
+- **An empty `search_documents` result looked final.** Paperless updates its full-text index in the background, so the index can lag behind or miss documents and "No documents found" wasn't always true. The empty result now says so and points to `list_documents` `search`, which matches straight from the database.
 
 ### Added
 
-- **`get_filing_options`:** every tag, correspondent, document type, storage path and custom field (id + name) in one call, so an agent can choose from the complete set before filing.
-- **`update_document` `add_tags` / `remove_tags`** change single tags and keep the rest. Every tag change — including a wholesale `tags` replace — now returns `tag_changes: { added, removed }`, so a dropped tag is visible.
-- **`list_documents` `ids`** (Paperless `id__in`) reads several known documents in one call.
-- **`fields`** on `list_documents` and `get_document` returns only the requested fields (id is always included).
-- **`get_document_content` `max_chars` / `offset`** for partial reads of long documents, with `total_chars` and `truncated` in the result.
-- **`search_documents` `mode`:** `query` (advanced syntax, the default), `text` (plain words) or `title` (titles only).
+- **`get_filing_options`:** every tag, correspondent, document type, storage path and custom field in one call (id and name, sorted by name; tags also show `is_inbox_tag`, custom fields their `data_type`). One call instead of five before filing a document, and it still works when a client hasn't loaded one of the `list_*` tools.
+- **`list_documents` `ids`** (Paperless `id__in`): read several known documents in one call.
+- **`fields` on `list_documents` and `get_document`:** return only the fields you need, e.g. `["title", "tags"]`. `id` is always included, and correspondent, type, tag and custom-field names are still resolved.
+- **`get_document_content` `max_chars` / `offset`:** read a long document in slices. The result then adds `offset`, `total_chars` and `truncated`; without either parameter the output is unchanged.
+- **`search_documents` `mode`:** `query` (the default; advanced syntax with AND/OR/NOT, quoted phrases, `field:value` and wildcards), `text` (plain words, no syntax) or `title` (titles only).
 
 ### Changed
 
-- `search_documents` with no hits now says so and points to `list_documents` `search`, which matches substrings straight from the database when the full-text index lags behind.
-- Tool descriptions now say which workflow trigger filters apply to which trigger types (`sources`, `filter_path` and `filter_mailrule` only on consumption-started triggers; tag/correspondent/type filters, custom-field queries and content matching only on types 2–4; `filter_filename` on all), explain what `list_documents` `search` matches, and note that Paperless sanitises file names derived from titles.
+- **Workflow trigger filters now say which trigger types use them.** `sources`, `filter_path` and `filter_mailrule` apply only to consumption-started triggers (type 1). The tag, correspondent, document-type and storage-path filters, `filter_custom_field_query` and content matching apply only to added, updated and scheduled triggers (types 2–4). `filter_filename` applies to all four.
+- `list_documents` `search` now explains what it matches: a case-insensitive substring match on title, correspondent name and content, read straight from the database, where every word must appear. Use `search_documents` for ranked full-text search.
+- `update_document` `title` notes that Paperless derives the stored file name from the title and replaces characters not allowed in file names (such as `/`), so `archived_file_name` can differ from the title.
+- The server instructions point to `get_filing_options` for looking up everything a document can be filed under.
 
 ## [3.2.0] — 2026-09-24
 
