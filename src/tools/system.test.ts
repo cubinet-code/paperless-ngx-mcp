@@ -229,3 +229,27 @@ describe("list_trash tool", () => {
     assert.deepEqual(body.results[0], { id: 5, title: "old scan", deleted_at: "2026-09-01" });
   });
 });
+
+describe("get_filing_options", () => {
+  test("returns every filing object as a compact id/name map", async () => {
+    const page = <T>(results: T[]) => ({ count: results.length, next: null, previous: null, results });
+    const { server, tools } = createMockServer();
+    registerSystemTools(server, createMockApi({
+      getTags: async () => page([{ id: 2, name: "Steuer", is_inbox_tag: false, color: "#fff" }, { id: 1, name: "Neu", is_inbox_tag: true }]),
+      getCorrespondents: async () => page([{ id: 7, name: "Finanzamt", match: "x" }]),
+      getDocumentTypes: async () => page([{ id: 8, name: "Gutschrift" }, { id: 3, name: "Angebot" }]),
+      getStoragePaths: async () => page([{ id: 1, name: "Archiv", path: "{title}" }]),
+      getCustomFields: async () => page([{ id: 4, name: "Betrag", data_type: "monetary", extra_data: {} }]),
+    }));
+
+    const body = getTextContent(await tools.get("get_filing_options")!.callback({}));
+
+    assert.deepEqual(body, {
+      tags: [{ id: 1, name: "Neu", is_inbox_tag: true }, { id: 2, name: "Steuer", is_inbox_tag: false }],
+      correspondents: [{ id: 7, name: "Finanzamt" }],
+      document_types: [{ id: 3, name: "Angebot" }, { id: 8, name: "Gutschrift" }],
+      storage_paths: [{ id: 1, name: "Archiv" }],
+      custom_fields: [{ id: 4, name: "Betrag", data_type: "monetary" }],
+    });
+  });
+});

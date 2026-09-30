@@ -24,7 +24,7 @@ export function registerDocumentTypeTools(
 ) {
   server.tool(
     "list_document_types",
-    "List all document types. IMPORTANT: When a user query may refer to a document type or tag, you should fetch all document types and all tags up front (with a large enough page_size), cache them for the session, and search locally for matches by name or slug before making further API calls. This reduces redundant requests and handles ambiguity between tags and document types efficiently.",
+    "List all document types. IMPORTANT: When a user query may refer to a document type or tag, you should fetch all document types and all tags up front (get_filing_options returns both, plus correspondents and storage paths, in one call), cache them for the session, and search locally for matches by name or slug before making further API calls. This reduces redundant requests and handles ambiguity between tags and document types efficiently.",
     {
       ...paginationFields,
       ...nameFilterFields,

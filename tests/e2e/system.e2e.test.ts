@@ -1,7 +1,7 @@
 import { before, test, describe } from "node:test";
 import assert from "node:assert/strict";
 import { createHarness, type E2EHarness } from "./harness";
-import { seed } from "./setup/seed";
+import { ensureCustomField, seed } from "./setup/seed";
 import { seedDocument } from "./setup/document";
 
 const BASE_URL = process.env.PAPERLESS_E2E_URL ?? "http://localhost:8001";
@@ -49,5 +49,26 @@ describe("system & task insight tools (e2e)", () => {
     assert.ok(entry, "trashed document is listed");
     assert.equal("content" in entry!, false);
     await harness.callTool("empty_trash", { documents: [id], confirm: true });
+  });
+
+  test("get_filing_options returns the whole filing vocabulary in one call", async () => {
+    await ensureCustomField(token, "e2e-filing-amount", "integer");
+    type Named = { id: number; name: string };
+    const options = await harness.callTool<{
+      tags: Array<Named & { is_inbox_tag: boolean }>;
+      correspondents: Named[];
+      document_types: Named[];
+      storage_paths: Named[];
+      custom_fields: Array<Named & { data_type: string }>;
+    }>("get_filing_options");
+
+    assert.ok(options.document_types.some((t) => t.name === "e2e-doctype-alpha"));
+    assert.ok(options.correspondents.some((c) => c.name === "e2e-correspondent-beta"));
+    assert.ok(options.tags.some((t) => t.name === "e2e-tag-gamma" && typeof t.is_inbox_tag === "boolean"));
+    assert.ok(Array.isArray(options.storage_paths));
+    assert.deepEqual(
+      options.custom_fields.find((f) => f.name === "e2e-filing-amount")?.data_type,
+      "integer"
+    );
   });
 });

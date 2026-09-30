@@ -20,7 +20,7 @@ import {
 export function registerTagTools(server: McpServer, api: PaperlessAPI) {
   server.tool(
     "list_tags",
-    "List all tags. IMPORTANT: When a user query may refer to a tag or document type, you should fetch all tags and all document types up front (with a large enough page_size), cache them for the session, and search locally for matches by name or slug before making further API calls. This reduces redundant requests and handles ambiguity between tags and document types efficiently.",
+    "List all tags. IMPORTANT: When a user query may refer to a tag or document type, you should fetch all tags and all document types up front (get_filing_options returns both, plus correspondents and storage paths, in one call), cache them for the session, and search locally for matches by name or slug before making further API calls. This reduces redundant requests and handles ambiguity between tags and document types efficiently.",
     {
       ...paginationFields,
       ...nameFilterFields,

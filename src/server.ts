@@ -64,6 +64,7 @@ Quick tool-selection guide:
 | Build an automation | create_workflow (triggers + actions in one call) |
 | Inspect or fix how mail is imported | list_mail_rules / update_mail_rule |
 | Check which Paperless version is running | get_system_status |
+| Know every tag, correspondent, document type, storage path and custom field before filing | get_filing_options (one call) |
       `,
     }
   );

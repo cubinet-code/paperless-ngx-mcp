@@ -5,7 +5,7 @@ import { Annotations } from "./utils/annotations";
 import { arrayNotEmpty } from "./utils/empty";
 import { withErrorHandling } from "./utils/middlewares";
 import { buildQueryString } from "./utils/queryString";
-import { PaginatedResponse } from "./utils/paginate";
+import { fetchAllPages, PaginatedResponse } from "./utils/paginate";
 import { deletedResponse, requireConfirm } from "./utils/responses";
 import { paginationFields } from "./utils/schemas";
 
@@ -40,6 +40,47 @@ export function registerSystemTools(server: McpServer, api: PaperlessAPI) {
       const response = await api.request("/status/");
       return {
         content: [{ type: "text", text: JSON.stringify(response) }],
+      };
+    })
+  );
+
+  server.tool(
+    "get_filing_options",
+    "Everything a document can be filed under, in one call: every tag, correspondent, document type, storage path and custom field (id + name; tags also is_inbox_tag, custom fields also data_type). Call this once before assigning metadata so you choose from the complete set instead of guessing, then use the ids with update_document or edit_documents_bulk. For matching rules or document counts use list_tags / list_correspondents / list_document_types / list_storage_paths.",
+    {},
+    Annotations.READ,
+    withErrorHandling(async () => {
+      interface Named {
+        id: number;
+        name: string;
+        [key: string]: unknown;
+      }
+      const all = (fetch: (qs: string) => Promise<unknown>) =>
+        fetchAllPages<Named>((qs) => fetch(qs) as Promise<PaginatedResponse<Named>>);
+      const [tags, correspondents, documentTypes, storagePaths, customFields] =
+        await Promise.all([
+          all((qs) => api.getTags(qs)),
+          all((qs) => api.getCorrespondents(qs)),
+          all((qs) => api.getDocumentTypes(qs)),
+          all((qs) => api.getStoragePaths(qs)),
+          all((qs) => api.getCustomFields(qs)),
+        ]);
+      const byName = (a: Named, b: Named) => a.name.localeCompare(b.name);
+      const idName = (items: Named[]) =>
+        items.sort(byName).map(({ id, name }) => ({ id, name }));
+      const filingOptions = {
+        tags: tags
+          .sort(byName)
+          .map(({ id, name, is_inbox_tag }) => ({ id, name, is_inbox_tag })),
+        correspondents: idName(correspondents),
+        document_types: idName(documentTypes),
+        storage_paths: idName(storagePaths),
+        custom_fields: customFields
+          .sort(byName)
+          .map(({ id, name, data_type }) => ({ id, name, data_type })),
+      };
+      return {
+        content: [{ type: "text", text: JSON.stringify(filingOptions) }],
       };
     })
   );
