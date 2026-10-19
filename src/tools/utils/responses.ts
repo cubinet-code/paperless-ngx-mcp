@@ -19,3 +19,13 @@ export function parseFilenameFromContentDisposition(
     header?.split("filename=")[1]?.replace(/"/g, "") || fallback
   );
 }
+
+/**
+ * Embedded MCP resources require absolute URIs, rather than bare filenames.
+ * This URI identifies inline content; it is not a fetchable URL.
+ */
+export function paperlessResourceUri(...segments: (string | number)[]): string {
+  return `paperless://files/${segments
+    .map((segment) => encodeURIComponent(String(segment)))
+    .join("/")}`;
+}

@@ -13,6 +13,7 @@ import { validateCustomFields } from "./utils/monetary";
 import { isTerminalTaskStatus, pollConsumeTask } from "./utils/tasks";
 import {
   parseFilenameFromContentDisposition,
+  paperlessResourceUri,
   requireConfirm,
 } from "./utils/responses";
 import { buildQueryString } from "./utils/queryString";
@@ -516,7 +517,7 @@ export function registerDocumentTools(server: McpServer, api: PaperlessAPI) {
           {
             type: "resource",
             resource: {
-              uri: filename,
+              uri: paperlessResourceUri("documents", args.id, filename),
               blob: Buffer.from(response.data).toString("base64"),
               mimeType: "application/pdf",
             },
@@ -540,7 +541,7 @@ export function registerDocumentTools(server: McpServer, api: PaperlessAPI) {
           {
             type: "resource",
             resource: {
-              uri: `document-${args.id}-thumb.webp`,
+              uri: paperlessResourceUri("documents", args.id, "thumbnail.webp"),
               blob: Buffer.from(response.data).toString("base64"),
               mimeType: "image/webp",
             },
@@ -727,7 +728,7 @@ export function registerDocumentTools(server: McpServer, api: PaperlessAPI) {
           {
             type: "resource",
             resource: {
-              uri: `document-${args.id}-preview.webp`,
+              uri: paperlessResourceUri("documents", args.id, "preview.webp"),
               blob: Buffer.from(response.data).toString("base64"),
               mimeType: "image/webp",
             },

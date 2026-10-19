@@ -6,7 +6,7 @@ import { arrayNotEmpty } from "./utils/empty";
 import { withErrorHandling } from "./utils/middlewares";
 import { buildQueryString } from "./utils/queryString";
 import { fetchAllPages, PaginatedResponse } from "./utils/paginate";
-import { deletedResponse, requireConfirm } from "./utils/responses";
+import { deletedResponse, paperlessResourceUri, requireConfirm } from "./utils/responses";
 import { paginationFields } from "./utils/schemas";
 
 interface Task {
@@ -415,7 +415,7 @@ export function registerSystemTools(server: McpServer, api: PaperlessAPI) {
           {
             type: "resource",
             resource: {
-              uri: "bulk-download.zip",
+              uri: paperlessResourceUri("documents", "bulk-download.zip"),
               blob: Buffer.from(response.data as ArrayBuffer).toString("base64"),
               mimeType: "application/zip",
             },

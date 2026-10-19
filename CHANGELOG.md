@@ -2,6 +2,12 @@
 
 All notable changes to this project are documented here. Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/); versioning follows [SemVer](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Fixed
+
+- **Binary tool responses used invalid relative resource URIs.** `download_document`, `get_document_thumbnail`, `get_document_preview`, and `download_documents_bulk` now return absolute `paperless://files/` URIs with percent-encoded path segments. The embedded file bytes and MIME types are unchanged; added regression tests cover the four tools.
+
 ## [3.2.1] — 2026-10-01
 
 Safer tag edits and fewer calls when an agent files or reads documents. Tested against **Paperless-ngx 3.2.1**, the latest Paperless release. No breaking changes: every new parameter is optional.
