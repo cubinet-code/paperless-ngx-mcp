@@ -74,7 +74,7 @@ async function withDocumentPdf<T>(
   id: number,
   processPdf: (filePath: string, info: PdfDocumentInfo, directory: string) => Promise<T>
 ): Promise<T> {
-  const response = await api.downloadDocument(id);
+  const response = await api.downloadDocument(id, false, MAX_SOURCE_BYTES);
   const bytes = Buffer.from(response.data);
   const contentType = String(response.headers?.["content-type"] || "application/pdf");
   verifyPdfBytes(bytes, contentType);
