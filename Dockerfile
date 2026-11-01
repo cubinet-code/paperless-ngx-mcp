@@ -1,14 +1,17 @@
 # syntax=docker/dockerfile:1
 
 FROM node:24-alpine AS build
+RUN apk add --no-cache poppler-utils
 WORKDIR /app
 COPY package.json package-lock.json ./
 RUN npm ci
 COPY tsconfig.json ./
 COPY src ./src
+RUN npm test
 RUN npm run build
 
 FROM node:24-alpine
+RUN apk add --no-cache poppler-utils
 WORKDIR /app
 ENV NODE_ENV=production
 COPY package.json package-lock.json ./

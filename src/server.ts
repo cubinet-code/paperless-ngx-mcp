@@ -3,6 +3,7 @@ import { PaperlessAPI } from "./api/PaperlessAPI";
 import { registerCorrespondentTools } from "./tools/correspondents";
 import { registerCustomFieldTools } from "./tools/customFields";
 import { registerDocumentTools } from "./tools/documents";
+import { registerPdfTools } from "./tools/pdf";
 import { registerDocumentVersionTools } from "./tools/documentVersions";
 import { registerDocumentTypeTools } from "./tools/documentTypes";
 import { registerPrompts } from "./tools/prompts";
@@ -63,6 +64,7 @@ Quick tool-selection guide:
 | Add a corrected/signed/unlocked file to an existing document | upload_document_version |
 | Build an automation | create_workflow (triggers + actions in one call) |
 | Inspect or fix how mail is imported | list_mail_rules / update_mail_rule |
+| Inspect the layout or scanned pages of a multi-page PDF | get_document_pdf_info, then get_document_pdf_page for the required pages |
 | Check which Paperless version is running | get_system_status |
 | Know every tag, correspondent, document type, storage path and custom field before filing | get_filing_options (one call) |
       `,
@@ -70,6 +72,7 @@ Quick tool-selection guide:
   );
 
   registerDocumentTools(server, api);
+  registerPdfTools(server, api);
   registerDocumentVersionTools(server, api);
   registerTagTools(server, api);
   registerCorrespondentTools(server, api);

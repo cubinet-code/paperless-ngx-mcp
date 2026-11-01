@@ -17,6 +17,28 @@ A [Model Context Protocol](https://modelcontextprotocol.io/) server for [Paperle
 - **Easy to allowlist.** Verb-first tool names (`list_*`, `get_*`, `delete_*`, …) group into [one permission wildcard each](#tool-naming-convention-for-permission-allowlists).
 - **Install it your way:** `npx`, a Docker image, a one-click Claude Desktop extension, or the official MCP Registry.
 
+## Read multi-page PDF documents safely
+
+The read-only tools `get_document_pdf_info` and `get_document_pdf_page` let an MCP
+client inspect every page of a PDF, including scans, signatures, stamps and
+tables, **without transferring the entire PDF as a large base64 response**.
+
+- `get_document_pdf_info({ id })` returns the page count and source file size.
+- `get_document_pdf_page({ id, page: 2 })` returns one selected page as a
+  native MCP JPEG image, together with its selectable text (up to 14,000
+  characters). Repeat for every page that needs inspection.
+
+These tools use Poppler (`pdfinfo`, `pdftoppm`, `pdftotext`) installed in
+the Docker image. The source file is limited to 50 MiB, a rendered image to
+1.5 MB, and the image's longest dimension to 1,600 pixels. Files are kept
+only in temporary private storage and removed after each request. They do not
+modify stored Paperless documents.
+
+Individual rendered pages are for inspection and are not lossless
+replacements for original PDF files. Encrypted or malformed PDFs may not be
+renderable; very large inputs are rejected. This feature is independent of
+the binary resource URI correction proposed in upstream PR #5.
+
 ## Compatibility
 
 Targets **Paperless-ngx 3.2** (tested against 3.2.1). Older Paperless versions are not supported — use `paperless-ngx-mcp@3.1.1` for Paperless 2.x. The package major version tracks the Paperless-ngx major it targets; there are no `1.x` or `2.x` releases.

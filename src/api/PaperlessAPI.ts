@@ -236,7 +236,8 @@ export class PaperlessAPI {
 
   async downloadDocument(
     id: number,
-    asOriginal = false
+    asOriginal = false,
+    maxBytes?: number
   ): Promise<AxiosResponse<ArrayBuffer>> {
     const query = asOriginal ? "?original=true" : "";
     const response = await client.get<ArrayBuffer>(
@@ -246,6 +247,7 @@ export class PaperlessAPI {
           Authorization: `Token ${this.token}`,
         },
         responseType: "arraybuffer",
+        ...(maxBytes !== undefined ? { maxContentLength: maxBytes } : {}),
       }
     );
     return response;
