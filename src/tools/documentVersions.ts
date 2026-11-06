@@ -2,12 +2,16 @@ import { McpServer } from "@modelcontextprotocol/sdk/server/mcp";
 import { z } from "zod";
 import { PaperlessAPI } from "../api/PaperlessAPI";
 import { Annotations } from "./utils/annotations";
-import { FILE_INPUT_DESCRIPTION, readFileInput } from "./utils/fileInput";
+import { FILE_INPUT_DESCRIPTION, readFileInput, UploadDirs } from "./utils/fileInput";
 import { withErrorHandling } from "./utils/middlewares";
 import { deletedResponse, requireConfirm } from "./utils/responses";
 import { isTerminalTaskStatus, pollConsumeTask } from "./utils/tasks";
 
-export function registerDocumentVersionTools(server: McpServer, api: PaperlessAPI) {
+export function registerDocumentVersionTools(
+  server: McpServer,
+  api: PaperlessAPI,
+  uploadDirs?: UploadDirs
+) {
   server.tool(
     "upload_document_version",
     "Add a new file version to an EXISTING document instead of creating a new document — e.g. a corrected scan, a signed copy, or an unlocked PDF. The new file becomes the current version: content, search and downloads follow it, and earlier versions stay listed in the document's `versions` (see get_document). Processing is asynchronous like post_document; set poll=true to wait. To strip a PDF password you don't need to re-upload: use edit_documents_bulk method remove_password with update_document=true.",
@@ -21,7 +25,7 @@ export function registerDocumentVersionTools(server: McpServer, api: PaperlessAP
     },
     Annotations.CREATE,
     withErrorHandling(async (args) => {
-      const document = await readFileInput(args.file);
+      const document = await readFileInput(args.file, uploadDirs);
       const response = await api.uploadDocumentVersion(
         args.id,
         document,

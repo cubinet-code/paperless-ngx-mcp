@@ -13,6 +13,7 @@ import { registerSystemTools } from "./tools/system";
 import { registerTagTools } from "./tools/tags";
 import { registerMailTools } from "./tools/mail";
 import { registerWorkflowTools } from "./tools/workflows";
+import { UploadDirs } from "./tools/utils/fileInput";
 import { version } from "../package.json";
 
 /**
@@ -22,10 +23,14 @@ import { version } from "../package.json";
  * `Protocol.connect()` throws otherwise — so every concurrent client needs its
  * own instance. The `PaperlessAPI` client holds no per-connection state and is
  * safe to share across them.
+ *
+ * `uploadDirs` limits which server-local paths the upload tools may read; see
+ * {@link UploadDirs}.
  */
 export function createServer(
   api: PaperlessAPI,
-  publicUrl: string | undefined
+  publicUrl: string | undefined,
+  uploadDirs?: UploadDirs
 ): McpServer {
   const server = new McpServer(
     { name: "paperless-ngx", version },
@@ -69,8 +74,8 @@ Quick tool-selection guide:
     }
   );
 
-  registerDocumentTools(server, api);
-  registerDocumentVersionTools(server, api);
+  registerDocumentTools(server, api, uploadDirs);
+  registerDocumentVersionTools(server, api, uploadDirs);
   registerTagTools(server, api);
   registerCorrespondentTools(server, api);
   registerDocumentTypeTools(server, api);

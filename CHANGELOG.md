@@ -2,6 +2,12 @@
 
 All notable changes to this project are documented here. Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/); versioning follows [SemVer](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Security
+
+- **Upload paths can be limited to chosen directories.** `post_document` and `upload_document_version` read any absolute path the server can open, so instructions hidden in document text could get the assistant to upload a private file such as an SSH key. The new `PAPERLESS_UPLOAD_DIRS` (or `--uploadDirs`) lists the directories paths may come from, separated by `:` (`;` on Windows); `none` turns path reads off. Paths are resolved through symlinks and `..` before the check. Base64 uploads are unaffected. Unset, behaviour is unchanged (any path) — setting it is recommended; see the README's Security section.
+
 ## [3.2.1] — 2026-10-01
 
 Safer tag edits and fewer calls when an agent files or reads documents. Tested against **Paperless-ngx 3.2.1**, the latest Paperless release. No breaking changes: every new parameter is optional.

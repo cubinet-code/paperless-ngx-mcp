@@ -115,8 +115,26 @@ docker run -d -p 127.0.0.1:3000:3000 \
 | `PAPERLESS_URL` | yes | Base URL the MCP server uses to talk to Paperless-NGX. |
 | `PAPERLESS_API_KEY` | yes | API token (see above). |
 | `PAPERLESS_PUBLIC_URL` | no | Public URL the assistant uses when constructing browser links to documents. Falls back to `PAPERLESS_URL`. |
+| `PAPERLESS_UPLOAD_DIRS` | no, but recommended | Directories `post_document` and `upload_document_version` may read files from when given a path, separated by `:` (`;` on Windows). `none` turns path reads off, so only base64 uploads work. Unset, any file the server can read is allowed — see [Security](#security). |
 
-CLI flags (`--baseUrl`, `--token`, `--publicUrl`, `--http`, `--port`, plus the HTTP [session limits](#session-limits)) take precedence over environment variables.
+CLI flags (`--baseUrl`, `--token`, `--publicUrl`, `--uploadDirs`, `--http`, `--port`, plus the HTTP [session limits](#session-limits)) take precedence over environment variables.
+
+### Security
+
+`post_document` and `upload_document_version` accept an absolute path and read that file from the server's own filesystem. By default any file the server process can read is allowed. Text inside a document — OCR output, a mail body, a note — can carry instructions aimed at the assistant (prompt injection), and such instructions could tell it to upload something like `~/.ssh/id_ed25519` and then create a share link for it.
+
+Set `PAPERLESS_UPLOAD_DIRS` (or `--uploadDirs`) to close this off:
+
+```bash
+# only files under these directories can be uploaded by path
+PAPERLESS_UPLOAD_DIRS="$HOME/Scans:$HOME/Downloads"
+# on Windows, separate with ;  e.g. C:\Users\me\Scans;C:\Users\me\Downloads
+
+# no path reads at all; uploads must send base64 content
+PAPERLESS_UPLOAD_DIRS=none
+```
+
+Paths are checked after resolving symlinks and `..`, so a link inside an allowed directory that points outside it is refused. On Windows the comparison ignores case. A refused path gets the same error whether the file is missing or outside, telling the assistant to send base64 instead. Base64 uploads are never restricted. The default stays unrestricted so existing setups keep working; it may change in a future major version.
 
 ### Example Usage
 
@@ -275,7 +293,7 @@ Upload a new document.
 
 Parameters: `file`, `filename`, plus optional `title`, `created`, `correspondent`, `document_type`, `storage_path`, `tags`, `archive_serial_number`, `custom_fields`, `poll`, `poll_timeout_seconds`.
 
-`file` accepts **base64-encoded contents** (the universal method — works for any deployment, since the bytes travel over the wire) or an **absolute file path** that the server reads from its own filesystem. The path option only works when the MCP server runs on the same machine as the file (local/stdio deployments); for a remote server, use base64.
+`file` accepts **base64-encoded contents** (the universal method — works for any deployment, since the bytes travel over the wire) or an **absolute file path** that the server reads from its own filesystem. The path option only works when the MCP server runs on the same machine as the file (local/stdio deployments); for a remote server, use base64. `PAPERLESS_UPLOAD_DIRS` limits which paths are allowed or turns the option off (see [Security](#security)).
 
 Upload is asynchronous. By default the tool returns a task UUID (track it with `list_tasks`). Set `poll: true` to wait for the consumer to finish and get the result in one call — the new `document_id` on success, or the consumer error on failure. `poll_timeout_seconds` (default 30, max 300) caps the wait; raise it for large scans where OCR is slow.
 

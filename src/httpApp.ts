@@ -6,6 +6,7 @@ import express from "express";
 import { randomUUID } from "node:crypto";
 import { PaperlessAPI } from "./api/PaperlessAPI";
 import { createServer } from "./server";
+import { UploadDirs } from "./tools/utils/fileInput";
 
 const DEFAULT_SESSION_IDLE_TIMEOUT_MS = 30 * 60 * 1000;
 const DEFAULT_SWEEP_INTERVAL_MS = 60 * 1000;
@@ -31,6 +32,8 @@ interface Session {
 export interface HttpAppOptions {
   api: PaperlessAPI;
   publicUrl: string | undefined;
+  /** Server-local directories the upload tools may read from; see {@link UploadDirs}. */
+  uploadDirs?: UploadDirs;
   /** Evict sessions untouched for this long. Defaults to 30 minutes. */
   sessionIdleTimeoutMs?: number;
   /** How often to look for idle sessions. Defaults to 60 seconds. */
@@ -65,6 +68,7 @@ const jsonRpcError = (
 export function createHttpApp({
   api,
   publicUrl,
+  uploadDirs,
   sessionIdleTimeoutMs = DEFAULT_SESSION_IDLE_TIMEOUT_MS,
   sweepIntervalMs = DEFAULT_SWEEP_INTERVAL_MS,
   maxSessions = DEFAULT_MAX_SESSIONS,
@@ -164,7 +168,7 @@ export function createHttpApp({
       }
 
       // A fresh server per session: one McpServer cannot serve two transports.
-      const server = createServer(api, publicUrl);
+      const server = createServer(api, publicUrl, uploadDirs);
       const transport = new StreamableHTTPServerTransport({
         sessionIdGenerator: () => randomUUID(),
         onsessioninitialized: (newSessionId: string) => {
@@ -241,7 +245,7 @@ export function createHttpApp({
 
       const transport = new SSEServerTransport("/messages", res);
       // Same rule as above: each SSE connection needs its own server.
-      const server = createServer(api, publicUrl);
+      const server = createServer(api, publicUrl, uploadDirs);
       sseTransports[transport.sessionId] = transport;
       sseServers[transport.sessionId] = server;
       res.on("close", () => {

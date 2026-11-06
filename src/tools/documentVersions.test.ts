@@ -75,6 +75,24 @@ describe("upload_document_version", () => {
     );
     assert.equal(called, false);
   });
+
+  test("honours the server's upload directories", async () => {
+    let called = false;
+    const api = createMockApi({
+      uploadDocumentVersion: async () => {
+        called = true;
+        return "x";
+      },
+    });
+    const { server, tools } = createMockServer();
+    registerDocumentVersionTools(server, api, []);
+
+    await assert.rejects(
+      () => tools.get("upload_document_version")!.callback({ id: 1, file: process.execPath, filename: "a.pdf" }),
+      /disabled on this server/
+    );
+    assert.equal(called, false);
+  });
 });
 
 describe("merge_documents_as_versions", () => {

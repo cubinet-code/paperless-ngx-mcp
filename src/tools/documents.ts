@@ -7,7 +7,7 @@ import { Annotations } from "./utils/annotations";
 import { CUSTOM_FIELD_QUERY_DESCRIPTION, CUSTOM_FIELD_VALUE_DESCRIPTION } from "./utils/descriptions";
 import { BULK_SELECTION_FILTER_KEYS } from "./utils/bulkFilters";
 import { arrayNotEmpty } from "./utils/empty";
-import { FILE_INPUT_DESCRIPTION, readFileInput } from "./utils/fileInput";
+import { FILE_INPUT_DESCRIPTION, readFileInput, UploadDirs } from "./utils/fileInput";
 import { withErrorHandling } from "./utils/middlewares";
 import { validateCustomFields } from "./utils/monetary";
 import { isTerminalTaskStatus, pollConsumeTask } from "./utils/tasks";
@@ -57,7 +57,11 @@ const documentFieldsParam = z
 const withId = (fields?: readonly string[]) =>
   fields ? ["id", ...fields.filter((f) => f !== "id")] : undefined;
 
-export function registerDocumentTools(server: McpServer, api: PaperlessAPI) {
+export function registerDocumentTools(
+  server: McpServer,
+  api: PaperlessAPI,
+  uploadDirs?: UploadDirs
+) {
   server.tool(
     "edit_documents_bulk",
     "Apply ONE of a fixed set of operations to MANY documents at once. Methods: set_correspondent, set_document_type, set_storage_path, add_tag, remove_tag, modify_tags, modify_custom_fields, set_permissions, delete, reprocess, merge, split, rotate, delete_pages, edit_pdf, remove_password. For per-document field edits including title, content, created (date), archive_serial_number, or owner, use update_document instead — those fields are not editable here. Note: 'remove_tag' only removes the tag from the specified documents (tag stays in the system); 'delete_tag' permanently deletes the tag from the entire system. ⚠️ WARNING: method 'delete' permanently deletes documents and requires confirm=true. Select documents either by `documents` (IDs) or by `all: true` + `filters` — Paperless document filter names such as correspondent__id, tags__id__all, document_type__id, title_content, created__date__gte or query (full text); the filter form changes every matching document in one call, e.g. reassigning all documents from a duplicate correspondent before deleting it. Unknown filter keys are refused, and the result reports matched_documents. all=true is not supported for merge, split, delete_pages, edit_pdf or remove_password. Method remove_password strips a PDF password (needs `password`); with update_document=true the unlocked file is stored as a new version of the same document. Method reprocess accepts remote_ocr=true to use the configured remote OCR engine.",
@@ -311,7 +315,7 @@ export function registerDocumentTools(server: McpServer, api: PaperlessAPI) {
     Annotations.CREATE,
     withErrorHandling(async (args) => {
       const { file, filename, poll, poll_timeout_seconds, ...metadata } = args;
-      const document = await readFileInput(file);
+      const document = await readFileInput(file, uploadDirs);
 
       const cleanedMetadata = Object.fromEntries(
         Object.entries(metadata).filter(([, v]) => v !== undefined)
