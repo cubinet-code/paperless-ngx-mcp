@@ -2,7 +2,7 @@
 import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js";
 import { parseArgs } from "node:util";
 import { PaperlessAPI } from "./api/PaperlessAPI";
-import { createHttpApp } from "./httpApp";
+import { createHttpApp, DEFAULT_HTTP_HOST } from "./httpApp";
 import { createServer } from "./server";
 
 const {
@@ -11,6 +11,7 @@ const {
     token,
     http: useHttp,
     port,
+    host,
     publicUrl,
     maxSessions,
     sessionIdleMinutes,
@@ -21,6 +22,7 @@ const {
     token: { type: "string" },
     http: { type: "boolean", default: false },
     port: { type: "string" },
+    host: { type: "string" },
     publicUrl: { type: "string", default: "" },
     maxSessions: { type: "string" },
     sessionIdleMinutes: { type: "string" },
@@ -33,6 +35,9 @@ const resolvedToken = token || process.env.PAPERLESS_API_KEY;
 const resolvedPublicUrl =
   publicUrl || process.env.PAPERLESS_PUBLIC_URL || resolvedBaseUrl;
 const resolvedPort = port ? parseInt(port, 10) : 3000;
+// Loopback by default: the HTTP transport has no authentication.
+const resolvedHost =
+  host?.trim() || process.env.PAPERLESS_MCP_HOST?.trim() || DEFAULT_HTTP_HOST;
 
 const positiveNumber = (value: string | undefined): number | undefined => {
   if (value === undefined) return undefined;
@@ -49,7 +54,7 @@ const resolvedIdleMinutes = positiveNumber(
 
 if (!resolvedBaseUrl || !resolvedToken) {
   console.error(
-    "Usage: paperless-ngx-mcp --baseUrl <url> --token <token> [--http] [--port <port>] [--publicUrl <url>]"
+    "Usage: paperless-ngx-mcp --baseUrl <url> --token <token> [--http] [--port <port>] [--host <address>] [--publicUrl <url>]"
   );
   console.error(
     "Or set PAPERLESS_URL and PAPERLESS_API_KEY environment variables."
@@ -65,6 +70,7 @@ async function main() {
       api,
       publicUrl: resolvedPublicUrl,
       maxSessions: resolvedMaxSessions,
+      host: resolvedHost,
       sessionIdleTimeoutMs: resolvedIdleMinutes
         ? resolvedIdleMinutes * 60 * 1000
         : undefined,
@@ -74,9 +80,12 @@ async function main() {
         void shutdown().finally(() => process.exit(0));
       });
     }
-    app.listen(resolvedPort, () => {
+    const displayHost = resolvedHost.includes(":")
+      ? `[${resolvedHost}]`
+      : resolvedHost;
+    app.listen(resolvedPort, resolvedHost, () => {
       console.log(
-        `MCP Streamable HTTP Server listening on port ${resolvedPort}`
+        `MCP Streamable HTTP Server listening on http://${displayHost}:${resolvedPort}`
       );
     });
   } else {

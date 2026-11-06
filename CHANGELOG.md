@@ -2,6 +2,17 @@
 
 All notable changes to this project are documented here. Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/); versioning follows [SemVer](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Changed
+
+- **Behaviour change for `--http` outside Docker: the HTTP server now listens on `127.0.0.1` only.** It used to listen on every interface, and the port has no authentication. To accept connections from other machines again, pass `--host 0.0.0.0` or set `PAPERLESS_MCP_HOST=0.0.0.0`; the flag wins over the variable. The Docker image sets `PAPERLESS_MCP_HOST=0.0.0.0`, so containers behave as before. stdio mode is unaffected.
+- The startup message now shows the address as well as the port: `listening on http://127.0.0.1:3000`.
+
+### Security
+
+- On a loopback bind, `--http` refuses requests whose `Host` header isn't `localhost`, `127.0.0.1` or `[::1]` (HTTP 403). This blocks DNS-rebinding attacks from a browser on the same machine. It uses the MCP SDK's own `localhostHostValidation` middleware.
+
 ## [3.2.1] — 2026-10-01
 
 Safer tag edits and fewer calls when an agent files or reads documents. Tested against **Paperless-ngx 3.2.1**, the latest Paperless release. No breaking changes: every new parameter is optional.

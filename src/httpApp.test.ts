@@ -2,7 +2,13 @@ import { test, describe, before, after } from "node:test";
 import assert from "node:assert/strict";
 import type { Server } from "node:http";
 import { PaperlessAPI } from "./api/PaperlessAPI";
-import { createHttpApp, HttpApp } from "./httpApp";
+import { request } from "node:http";
+import {
+  createHttpApp,
+  DEFAULT_HTTP_HOST,
+  HttpApp,
+  isLoopbackHost,
+} from "./httpApp";
 
 const INIT_BODY = {
   jsonrpc: "2.0",
@@ -337,5 +343,86 @@ describe("createHttpApp — session pressure", () => {
       await httpApp.shutdown();
       await new Promise<void>((resolve) => listener.close(() => resolve()));
     }
+  });
+});
+
+/** POST initialize with an explicit Host header (fetch won't let us set one). */
+function postWithHost(
+  port: number,
+  hostHeader: string
+): Promise<{ status: number; body: string }> {
+  return new Promise((resolve, reject) => {
+    const req = request(
+      {
+        host: "127.0.0.1",
+        port,
+        path: "/mcp",
+        method: "POST",
+        headers: {
+          Host: hostHeader,
+          "Content-Type": "application/json",
+          Accept: "application/json, text/event-stream",
+        },
+      },
+      (res) => {
+        let body = "";
+        res.setEncoding("utf8");
+        res.on("data", (chunk) => (body += chunk));
+        res.on("end", () => resolve({ status: res.statusCode ?? 0, body }));
+      }
+    );
+    req.on("error", reject);
+    req.end(JSON.stringify(INIT_BODY));
+  });
+}
+
+describe("createHttpApp — bind host", () => {
+  test("defaults to loopback", () => {
+    assert.equal(DEFAULT_HTTP_HOST, "127.0.0.1");
+    assert.ok(isLoopbackHost(DEFAULT_HTTP_HOST));
+  });
+
+  test("recognises loopback and non-loopback addresses", () => {
+    for (const host of ["127.0.0.1", "localhost", "LOCALHOST", "::1"]) {
+      assert.ok(isLoopbackHost(host), host);
+    }
+    for (const host of ["0.0.0.0", "::", "192.168.1.10", "paperless.lan"]) {
+      assert.ok(!isLoopbackHost(host), host);
+    }
+  });
+
+  const withApp = async (
+    host: string | undefined,
+    run: (port: number) => Promise<void>
+  ) => {
+    const api = new PaperlessAPI("http://127.0.0.1:1/api", "token");
+    const httpApp = createHttpApp({ api, publicUrl: undefined, host });
+    const listener = await new Promise<Server>((resolve) => {
+      const s = httpApp.app.listen(0, "127.0.0.1", () => resolve(s));
+    });
+    try {
+      await run((listener.address() as { port: number }).port);
+    } finally {
+      await httpApp.shutdown();
+      await new Promise<void>((resolve) => listener.close(() => resolve()));
+    }
+  };
+
+  test("a loopback bind refuses a foreign Host header (DNS rebinding)", async () => {
+    await withApp("127.0.0.1", async (port) => {
+      const rebound = await postWithHost(port, `evil.example:${port}`);
+      assert.equal(rebound.status, 403);
+      assert.match(rebound.body, /Invalid Host/);
+
+      const local = await postWithHost(port, `localhost:${port}`);
+      assert.equal(local.status, 200);
+    });
+  });
+
+  test("a non-loopback bind does not check the Host header", async () => {
+    await withApp("0.0.0.0", async (port) => {
+      const res = await postWithHost(port, `paperless.lan:${port}`);
+      assert.equal(res.status, 200);
+    });
   });
 });

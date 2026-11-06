@@ -102,6 +102,8 @@ docker run -d -p 127.0.0.1:3000:3000 \
   ghcr.io/cubinet-code/paperless-ngx-mcp --http --port 3000
 ```
 
+The image sets `PAPERLESS_MCP_HOST=0.0.0.0`, so the server listens on every interface *inside* the container and Docker's port mapping can reach it. Restrict exposure on the host side, as `-p 127.0.0.1:3000:3000` does above.
+
 ### Get your Paperless-NGX API token
 
 1. Log into your Paperless-NGX instance.
@@ -116,7 +118,7 @@ docker run -d -p 127.0.0.1:3000:3000 \
 | `PAPERLESS_API_KEY` | yes | API token (see above). |
 | `PAPERLESS_PUBLIC_URL` | no | Public URL the assistant uses when constructing browser links to documents. Falls back to `PAPERLESS_URL`. |
 
-CLI flags (`--baseUrl`, `--token`, `--publicUrl`, `--http`, `--port`, plus the HTTP [session limits](#session-limits)) take precedence over environment variables.
+CLI flags (`--baseUrl`, `--token`, `--publicUrl`, `--http`, `--port`, `--host`, plus the HTTP [session limits](#session-limits)) take precedence over environment variables.
 
 ### Example Usage
 
@@ -313,7 +315,7 @@ npx -y paperless-ngx-mcp --baseUrl http://localhost:8000 --token xxx
 
 ### HTTP (Streamable HTTP transport)
 
-Use the `--http` flag to expose the server over HTTP. `--port` defaults to `3000`.
+Use the `--http` flag to expose the server over HTTP. `--port` defaults to `3000`; the server listens on `127.0.0.1` unless you set a host.
 
 ```bash
 npx -y paperless-ngx-mcp --baseUrl http://localhost:8000 --token xxx --http --port 3000
@@ -323,6 +325,14 @@ npx -y paperless-ngx-mcp --baseUrl http://localhost:8000 --token xxx --http --po
 - The first request (an `initialize` call) creates a session and returns an `Mcp-Session-Id` header; subsequent requests must send that header back to reuse the same session. Transports are kept in an in-memory `Map`, so this only works for single-instance deployments.
 - `GET /mcp` streams server-initiated messages for a session; `DELETE /mcp` terminates it and evicts it from the map. Both require a valid `Mcp-Session-Id` header.
 - A legacy `GET /sse` + `POST /messages` SSE transport is also exposed for clients that don't yet support the streamable transport.
+
+#### Bind address
+
+| Flag | Environment variable | Default | Purpose |
+|---|---|---|---|
+| `--host` | `PAPERLESS_MCP_HOST` | `127.0.0.1` | Address to listen on. `0.0.0.0` (or `::`) listens on every interface. |
+
+The flag wins over the environment variable. While the server listens on a loopback address (`127.0.0.1`, `localhost` or `::1`), it also refuses requests whose `Host` header isn't `localhost`, `127.0.0.1` or `[::1]` (HTTP 403). That stops a web page in your browser from reaching the server through DNS rebinding. With any other address there is no `Host` check.
 
 #### Session limits
 
@@ -335,7 +345,9 @@ Every session holds its own MCP server instance (~3.5 MB), and the HTTP port has
 
 A client that is actively connected — including one holding a `GET /mcp` stream open — is never evicted, no matter how long it stays idle. Only genuinely abandoned sessions are reclaimed.
 
-Because sessions live in memory, `--http` only works for **single-instance** deployments. Do not expose the port to an untrusted network: there is no auth, and it binds all interfaces.
+Because sessions live in memory, `--http` only works for **single-instance** deployments.
+
+> **Security:** the HTTP transport has **no authentication**. Anyone who can reach the port can read, change and delete everything the API token can. Keep the default loopback bind, or if you set `--host 0.0.0.0` (or run the Docker image), make sure only trusted clients can reach the port, e.g. with a firewall, a host-side `-p 127.0.0.1:…` mapping, or an authenticating reverse proxy.
 
 ## Error Handling
 

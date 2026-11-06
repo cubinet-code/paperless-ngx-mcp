@@ -1,4 +1,5 @@
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
+import { localhostHostValidation } from "@modelcontextprotocol/sdk/server/middleware/hostHeaderValidation.js";
 import { SSEServerTransport } from "@modelcontextprotocol/sdk/server/sse.js";
 import { StreamableHTTPServerTransport } from "@modelcontextprotocol/sdk/server/streamableHttp.js";
 import { isInitializeRequest } from "@modelcontextprotocol/sdk/types.js";
@@ -16,6 +17,18 @@ const DEFAULT_SWEEP_INTERVAL_MS = 60 * 1000;
  * raise it with --maxSessions if you genuinely serve more concurrent clients.
  */
 const DEFAULT_MAX_SESSIONS = 50;
+
+/**
+ * The HTTP port has no authentication, so it listens on loopback only unless
+ * the operator opts in to more (e.g. `--host 0.0.0.0` inside a container).
+ */
+export const DEFAULT_HTTP_HOST = "127.0.0.1";
+
+const LOOPBACK_HOSTS = new Set(["127.0.0.1", "localhost", "::1", "[::1]"]);
+
+/** True for the addresses `localhostHostValidation` accepts in a Host header. */
+export const isLoopbackHost = (host: string): boolean =>
+  LOOPBACK_HOSTS.has(host.trim().toLowerCase());
 
 interface Session {
   transport: StreamableHTTPServerTransport;
@@ -37,6 +50,13 @@ export interface HttpAppOptions {
   sweepIntervalMs?: number;
   /** Reject new sessions past this many live ones. Defaults to 50. */
   maxSessions?: number;
+  /**
+   * The address the app will listen on. When it is a loopback address, requests
+   * whose Host header is not localhost / 127.0.0.1 / [::1] are refused with
+   * 403, which blocks DNS-rebinding attacks from a browser on the same machine.
+   * Omitted: no Host-header check.
+   */
+  host?: string;
 }
 
 export interface HttpApp {
@@ -68,8 +88,12 @@ export function createHttpApp({
   sessionIdleTimeoutMs = DEFAULT_SESSION_IDLE_TIMEOUT_MS,
   sweepIntervalMs = DEFAULT_SWEEP_INTERVAL_MS,
   maxSessions = DEFAULT_MAX_SESSIONS,
+  host,
 }: HttpAppOptions): HttpApp {
   const app = express();
+  if (host !== undefined && isLoopbackHost(host)) {
+    app.use(localhostHostValidation());
+  }
   app.use(express.json({ limit: "1mb" }));
 
   const sessions = new Map<string, Session>();
