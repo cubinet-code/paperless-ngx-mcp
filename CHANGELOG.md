@@ -2,6 +2,18 @@
 
 All notable changes to this project are documented here. Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/); versioning follows [SemVer](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Security
+
+- Cleared all 11 `npm audit` advisories in production dependencies (1 critical, 5 high, 5 moderate) with `npm audit fix`. No `--force` and no breaking changes. The minimum versions of the three affected direct dependencies are raised so npm installs also get the patched versions:
+  - `@modelcontextprotocol/sdk` `1.30.1` → `1.32.2`, pulling in `hono` `4.13.8` → `4.13.16` (moderate: `serveStatic` double-decodes paths; we serve no static files) and `@hono/node-server` `2.1.0` → `2.1.6` (moderate).
+  - `express`'s `proxy-addr` `2.0.7` → `2.0.8` (critical: IP spoofing via an IPv4-mapped IPv6 trust subnet) and `body-parser` `2.3.0` → `2.4.0` (high), with `qs` `6.16.0` → `6.17.1` (moderate: `stringify` DoS).
+  - `axios` `1.19.0` → `1.21.0` and `follow-redirects` `1.16.0` → `1.16.2` (high).
+  - `zod` `4.4.3` → `4.6.7` (high: memory exhaustion while validating oversized constrained collections).
+  - `express-rate-limit`'s `ip-address` `10.5.0` → `10.7.6` (moderate: SSRF/trust-boundary bypasses and stalls on long input) and `fast-uri` `3.1.8` → `3.1.9` (moderate).
+- `npm audit` is clean.
+
 ## [3.2.1] — 2026-10-01
 
 Safer tag edits and fewer calls when an agent files or reads documents. Tested against **Paperless-ngx 3.2.1**, the latest Paperless release. No breaking changes: every new parameter is optional.
